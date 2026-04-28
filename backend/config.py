@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "ai_accountant"
-    POSTGRES_PORT: str = "5432"
+    POSTGRES_PORT: str = "5433"
     
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:

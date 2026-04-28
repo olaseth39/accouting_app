@@ -42,14 +42,15 @@ import { DataContext } from "./DataContext";   // ✅ use DataContext, not DataP
   
 function AccountingApp() {
   const navigate = useNavigate();
-  const { setInvoicesData, setBankKPIs, setThreadId } = useContext(DataContext);
+  const { threadId, companyName, setCompanyNameState, invoiceFile, setInvoicesData, setBankKPIs, setThreadId } = useContext(DataContext);
+  //const [companyNameInput, setCompanyNameInput] = useState(""); // ✅ local state
   const [fileType, setFileType] = useState("transaction");
 
   // Single file states
   const [uploadedFile, setUploadedFile] = useState(null);
 
   // Combined option states
-  const [invoiceFile, setInvoiceFile] = useState(null);
+  //const [invoiceFile, setInvoiceFile] = useState(null);
   const [bankFile, setBankFile] = useState(null);
 
   // Output states
@@ -68,16 +69,84 @@ function AccountingApp() {
 
   const [openUploadPrompt, setOpenUploadPrompt] = useState(false);
 
-  
+  //const [companyName, setCompanyName] = useState("");
+  const [sessionInitialized, setSessionInitialized] = useState(false);
+  const [openSessionModal, setOpenSessionModal] = useState(false);
+
+
   // React.useEffect(() => {
   //   setInvoicesData(dummyInvoices); // populate context with dummy data
   // }, []);
+
+  const handleUploadClick = () => {
+    if (!threadId) {
+      console.log("Existing session found with threadId:", threadId);
+      // No session yet → notify user
+    alert("You need to create an accounting session before uploading files.");
+    } else {
+      // Session exists → open upload dialog directly
+      console.log(threadId, "Session exists. Opening upload prompt.");
+      setOpenUploadPrompt(true);
+    }
+};
+
+// Sign in button click
+  // const handleSignInClick = () => {
+  //   setOpenSessionModal(true);
+  // };
+
+const handleSessionClick = () => {
+  if (threadId) {
+    // Kill session
+    setThreadId(null, null);
+    alert("Session ended.");
+  } else {
+    // Open modal to create session
+    setOpenSessionModal(true);
+  }
+};
   
 
-  // Background image state
-  //const [backgroundImage, setBackgroundImage] = useState(null);
+  // Step 1: Initialize session
+  const initSession = async () => {
 
-   const handleFileUpload = async (event) => {
+    // Check if a session already exists
+    if (threadId) {
+      alert("You have already started an accounting session.");
+      return;
+    }
+
+    if (!companyName) {
+      alert("Please enter a company name.");
+      return;
+    }
+    try {
+      const formData = new FormData();
+      formData.append("company_name", companyName);
+       //formData.append("company_name", companyNameInput)
+
+      const res = await fetch("http://127.0.0.1:8002/agent/session", {
+        method: "POST",
+        body: formData,
+
+      });
+      
+      const data = await res.json();
+      setThreadId(data.thread_id, data.company_name)
+      console.log("Session initialized:", data);
+
+      //setThreadId(data.thread_id); // ✅ Save threadId in context
+      alert(`Accounting session created for ${data.company_name}`);
+      setOpenSessionModal(false);  // close company name modal
+      //setSessionInitialized(true); // ✅ Unlock upload UI
+      //setOpenUploadPrompt(true);   // open upload dialog
+    } catch (err) {
+      console.error("Session init failed:", err);
+    }
+  };
+
+
+  const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
     setUploadedFile(file);
@@ -87,7 +156,7 @@ function AccountingApp() {
     formData.append("type", fileType);
 
     try {
-      const response = await fetch("/api/upload", {
+      const response = await fetch("/agent/upload", {
         method: "POST",
         body: formData,
       });
@@ -131,39 +200,75 @@ function AccountingApp() {
   console.log(formData.get("bank_statement")); // Debug: Check if bank statement file is in FormData
 
   try {
-    console.log("Sending request to /api/upload…");
+    console.log("Sending request to /agent/upload…");
     setLoading(true);
     setProgressStep(1); // Uploading
 
-    const response = await fetch("http://127.0.0.1:8001/api/upload", {
-      method: "POST",
-      body: formData,
-    });
+    // const response = await fetch("http://127.0.0.1:8001/agent/upload", {
+    //   method: "POST",
+    //   body: formData,
+    // });
+
+    const uploadRes = await fetch(
+      `http://127.0.0.1:8002/agent/session/${threadId}/upload`,
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
 
     setProgressStep(2); // Extracting data
+    const uploadResult = await uploadRes.json();
+    console.log("Upload result:", uploadResult);
 
-    if (!response.ok) {
-      throw new Error(`Server error: ${response.status}`);
-      console.log("Response status:", response.status);
-    }
 
-    console.log("Response status:", response.status);
+    // 2. Run pipeline
+    const runRes = await fetch(
+      `http://127.0.0.1:8002/agent/session/${threadId}/run`,
+      { method: "POST" }
+    );
 
-    const result = await response.json();
-    console.log("Backend response:", result);
-    setProgressStep(3); // Generating reports
+    const runResult = await runRes.json();
+    console.log("Run result:", runResult);
+    
+    setProgressStep(3);
+
+    // if (!runResult.ok) {
+    //   throw new Error(`Server error: ${runResult.status}`);
+    //   console.log("Response status:", runResult.status);
+    // }
+
+    //console.log("Response status:", runResult.status);
+
+    //const result = await runResult.json();
+    console.log("Backend response:", runResult);
+    setProgressStep(4); // Generating reports
+
+    // 3. Fetch state
+    const stateRes = await fetch(
+      `http://127.0.0.1:8002/agent/session/${threadId}/state`
+    );
+  const stateResult = await stateRes.json();
+  console.log("State result:", stateResult);
 
     
     // Save backend response in Context
-    setInvoicesData(result.extracted_transactions || []); // Save extracted transactions
-    setBankKPIs({
-      invoiceView: result.invoice_tabular_view,
-      status: result.status,
-      audit_log: result.audit_log,
-      invoice_raw_text: result.invoice_raw_text,
-    });
-    setThreadId(result.thread_id);   // ✅ capture threadId here
+  setInvoicesData(stateResult.extracted_receipts || []); // Save extracted transactions
+    //setInvoicesData(result.invoices  || []); // Save extracted transactions
 
+    //console.log("Setting invoices data in context:", invoiceFile);
+
+    setBankKPIs({
+      invoiceView: stateResult.invoice_tabular_view,
+      status: stateResult.status,
+      audit_log: stateResult.audit_log,
+      invoice_raw_text: stateResult.invoice_raw_text,
+
+    });
+    //setThreadId(stateResult.thread_id, stateResult.company_name);
+    setThreadId(threadId, companyName)   // ✅ capture threadId and company name here
+    console.log("Updated threadId in context:", threadId, companyName);
+    setProgressStep(4); // Done
     navigate("/analysis");
   } catch (err) {
     console.error("Combined upload failed:", err);
@@ -175,6 +280,7 @@ function AccountingApp() {
    
 };
 
+ 
 return (
   <div className="app-container">
     {/* Header */}
@@ -198,13 +304,75 @@ return (
         </div>
         <div class="nav-actions">
           {/* <span class="pill"><span class="dot"></span> All systems normal</span> */}
-          <button class="btn-ghost" onClick={() => setOpenUploadPrompt(true)}>
+          {/* <button class="btn-ghost" onClick={() => setOpenUploadPrompt(true)}> */}
+          <button className="btn-ghost" onClick={handleUploadClick}>
             <span class="pill"><span class="dot"></span> Upload files</span>
           </button>
-          <button class="btn-ghost">Docs</button>
-          <button class="btn-ghost">Sign in</button>
+          {/* <button class="btn-ghost">Docs</button> */}
+          <button class="btn-ghost" onClick={handleSessionClick}>
+            {threadId ? "Kill Session" : "Create Session"}
+          </button>
+          {threadId && (
+            <span className="pill">
+              <span className="dot"></span> Signed in as {companyName}
+            </span>
+          )}
         </div>
     </header>
+
+    {/* session id */}
+    <Dialog
+      open={openSessionModal}
+      onClose={() => setOpenSessionModal(false)}
+      fullWidth
+      maxWidth="sm"
+    >
+      <DialogTitle>Initialize Accounting Session</DialogTitle>
+      <DialogContent>
+        <Typography gutterBottom>
+          You are about to start a new accounting session. Please enter your company name:
+        </Typography>
+        <input
+          type="text"
+          value={companyName} 
+          //onChange={(e) => setCompanyName(e.target.value)}
+          onChange={(e) => setCompanyNameState(e.target.value)}
+          placeholder="Company Name"
+          style={{ width: "100%", padding: "8px", marginTop: "10px" }}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setOpenSessionModal(false)}>Cancel</Button>
+        <Button variant="contained" onClick={initSession}>OK</Button>
+      </DialogActions>
+    </Dialog>
+
+    {/* sign in modal */}
+    <Dialog
+      open={openSessionModal}
+      onClose={() => setOpenSessionModal(false)}
+      fullWidth
+      maxWidth="sm"
+    >
+      <DialogTitle>Create Accounting Session</DialogTitle>
+      <DialogContent>
+        <Typography gutterBottom>
+          Please enter your company name to create a new accounting session:
+        </Typography>
+        <input
+          type="text"
+          value={companyName} 
+          // onChange={(e) => setCompanyName(e.target.value)}
+          onChange={(e) => setCompanyNameState(e.target.value)}
+          // placeholder="Company Name"
+          style={{ width: "100%", padding: "8px", marginTop: "10px" }}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setOpenSessionModal(false)}>Cancel</Button>
+        <Button variant="contained" onClick={initSession}>OK</Button>
+      </DialogActions>
+    </Dialog>
 
     {/* Main Content */}
    
@@ -360,7 +528,7 @@ return (
 
               <div
                 onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => handleDrop(e, setInvoiceFile)}
+                onDrop={(e) => handleDrop(e, setInvoicesData)}
                 className="drag-drop-zone"
               >
                 <label htmlFor="invoice-upload" className="drag-drop-label">
@@ -371,7 +539,7 @@ return (
                   type="file"
                   accept=".pdf"
                      //onChange={(e) => setInvoiceFile(e.target.files[0])}
-                  onChange={(e) => setInvoiceFile(Array.from(e.target.files))}
+                  onChange={(e) => setInvoicesData(Array.from(e.target.files))}
                   style={{ display: "none" }}
                 multiple/>
               </div>
@@ -453,9 +621,11 @@ return (
           <CircularProgress color="primary" />
           <Typography variant="h6" sx={{ marginTop: 2 }}>
             
-            {progressStep === 1 && "🔄 Extracting Invoices…"}
-            {progressStep === 2 && "📊 Creating Tables...…"}
-            {progressStep === 3 && "📂 Uploading files…"}
+            {progressStep === 0 && "🔄 Starting Pipeline…"}
+            {progressStep === 1 && "🔄 Running Pipeline…"}
+            {progressStep === 2 && "📊 Extracting files...…"}
+            {progressStep === 3 && "📂 Creating Tables...…"}
+            {progressStep === 4 && "✅ Analysis complete!"}
           </Typography>
           <LinearProgress sx={{ width: "100%", marginTop: 2 }} />
         </Card>

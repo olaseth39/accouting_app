@@ -15,12 +15,12 @@ import {
   CircularProgress, LinearProgress,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
-import { DataContext } from "./DataContext";
+import { DataContext, DataProvider } from "./DataContext";
 import { useLocation } from "react-router-dom";
 
 
 export default function InvoicesPage() {
-  const { invoiceFile, invoicesData, bankKPIs, setInvoicesData, setBankKPIs, threadId} = useContext(DataContext);
+  const {invoiceFile, companyName, invoicesData, bankKPIs, setInvoicesData, setBankKPIs, threadId, setThreadId} = useContext(DataContext);
   const [tabIndex, setTabIndex] = useState(0);
   const [openConfirm, setOpenConfirm] = useState(false);
   const navigate = useNavigate();
@@ -34,32 +34,78 @@ export default function InvoicesPage() {
   const [reconciling, setReconciling] = useState(false);
   const [reconcileStep, setReconcileStep] = useState(0);
 
+//   When the user clicks "Approve All Invoices", we want to:
+// 1. Update the local state to mark all invoices as approved (this gives instant feedback in the UI).
+// 2. Send a request to the backend to trigger the reconciliation process immediately with all invoices marked as approved.
+// 3. Optionally, we can show a loading state while waiting for the backend to process and return the updated journal entries.
+  const handleToggleApprove = async () => {
+    if (allApproved) {
+      // Unapprove all
+      const unapprovedInvoices = invoiceFile.map(inv => ({
+        ...inv,
+        approved: false
+      }));
+      setInvoicesData(unapprovedInvoices);
+      setAllApproved(false);
+      alert("All invoices have been unapproved!");
+    } else {
+      // Approve all
+      const approvedInvoices = invoiceFile.map(inv => ({
+        ...inv,
+        approved: true
+      }));
+      setInvoicesData(approvedInvoices);
+      setAllApproved(true);
+      alert("All invoices have been approved!");
 
-  const handleToggleApprove = () => {
-  if (allApproved) {
-    // Unapprove all
-    const unapprovedInvoices = invoiceFile.map(inv => ({
-      ...inv,
-      approved: false
-    }));
-    setInvoicesData(unapprovedInvoices);
-    setAllApproved(false);
-    alert("All invoices have been unapproved!");
-  } else {
-    // Approve all
-    const approvedInvoices = invoiceFile.map(inv => ({
-      ...inv,
-      approved: true
-    }));
-    setInvoicesData(approvedInvoices);
-    setAllApproved(true);
-    alert("All invoices have been approved!");
-  }
+      // ✅ Trigger reconciliation immediately
+      try {
+        setReconciling(true);
+        setReconcileStep(1); // Step 1: Starting reconciliation
+
+        const response = await fetch(
+          `http://127.0.0.1:8002/agent/session/${threadId}/approve`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              modifications: {
+                status: "approved",
+                human_approved_invoices: approvedInvoices
+              }
+            })
+          }
+        );
+
+        setReconcileStep(2); // Step 2: Matching invoices with bank transactions
+
+        // ✅ Then fetch updated state
+        const stateRes = await fetch(
+          `http://127.0.0.1:8002/agent/session/${threadId}/state`
+        );
+        
+        const data = await response.json();
+        const stateData = await stateRes.json();
+        console.log("Raw response:", data.state);
+        console.log("Updated state:", stateData);
+
+        if (stateData.journal_entries) {
+          console.log("Journal entries received:", stateData.journal_entries);
+          setJournalEntries(stateData.journal_entries);
+        }
+
+        setReconcileStep(3); // Step 3: Done
+      } catch (err) {
+        console.error("Reconciliation failed:", err);
+        setReconciling(false);
+      }
+    }
 };
 
   const columns = [
     { field: "date", headerName: "Date", flex: 1, headerClassName: "custom-header" },
     { field: "vendor_name", headerName: "Vendor Name", flex: 2, headerClassName: "custom-header" },
+    { field: "client_name", headerName: "Client Name", flex: 2, headerClassName: "custom-header" },
     { field: "description", headerName: "Description", flex: 3, headerClassName: "custom-header" },
     { field: "amount", headerName: "Amount", flex: 1, headerClassName: "custom-header" },
     { field: "source_file", headerName: "Source File", flex: 2, headerClassName: "custom-header" },
@@ -115,60 +161,7 @@ const handleRowUnapprove = (rowId) => {
   setOpenDeleteConfirm(true);
 };
 
-// for accept and reject
-// Accept button
-const handleAccept = async () => {
-  if (!allApproved) {
-    alert("You need to approve all before clicking Accept.");
-    return;
-  }
-
-  alert("Invoices accepted! Workflow will continue...");
-  console.log("threadId:", threadId);
-
-  try {
-    setReconciling(true);
-    setReconcileStep(1); // Step 1: Starting reconciliation
-
-    const response = await fetch(`http://127.0.0.1:8001/api/workflow/${threadId}/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        modifications: {
-          status: "approved",
-          human_approved_invoices: invoiceFile
-        }
-      })
-    });
-
-    setReconcileStep(2); // Step 2: Matching invoices with bank transactions
-
-    const data = await response.json();
-    console.log("Raw response:", data);
-
-    if (data.journal_entries) {
-      console.log("Journal entries received:", data.journal_entries);
-      setJournalEntries(data.journal_entries);
-    }
-
-    setReconcileStep(3); // Step 3: Done
-  } catch (err) {
-    console.error("Fetch failed:", err);
-    setReconciling(false); // hide overlay if error
-  }
-};
-
-// Reject button
-const handleReject = () => {
-  if (allApproved) {
-    alert("You cannot reject after approving all.");
-    return;
-  }
-
-  alert("Invoices rejected. Workflow has been stopped.");
-  console.log("Workflow stopped due to rejection.");
-  // Optionally: call a backend reject endpoint if you want audit logging
-};
+// console.log("InvoicesPage threadId:", threadId);
 
 
 // const handleRowToggle = (rowId) => {
@@ -179,7 +172,6 @@ const handleReject = () => {
 // };
 
 return (
-    
    <Box sx={{ width: "100%"  }}>
 
       {/* Header */}
@@ -206,6 +198,11 @@ return (
           </button> */}
           <button class="btn-ghost">Docs</button>
           {/* <button class="btn-ghost">Sign in</button> */}
+          {threadId && (
+            <span className="pill">
+              <span className="dot"></span> Signed in as {companyName}
+            </span>
+          )}
         </div>
       </header>
 
@@ -397,37 +394,6 @@ return (
                   },
                 }}
             />
-
-
-              {/* ✅ Add the Accept/Rejeect buttons here */}
-              <Box sx={{ textAlign: "center", marginTop: "20px" }}>
-                {/* <Button
-                  variant="contained"
-                  color={allApproved ? "warning" : "success"}
-                  onClick={handleToggleApprove}
-                  sx={{ borderRadius: "8px", fontWeight: "600", marginRight: "10px" }}
-                >
-                  {allApproved ? "❌ Unapprove All Invoices" : "✅ Approve All Invoices"}
-                </Button> */}
-
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={handleAccept}
-                  sx={{ borderRadius: "8px", fontWeight: "600", marginRight: "10px" }}
-                >
-                  Accept
-                </Button>
-
-                <Button
-                  variant="contained"
-                  color="error"
-                  onClick={handleReject}
-                  sx={{ borderRadius: "8px", fontWeight: "600" }}
-                >
-                  Reject
-                </Button>
-              </Box>
 
         </Card>
       )}

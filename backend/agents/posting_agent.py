@@ -11,14 +11,17 @@ async def ledger_posting_agent(state: AccountingState) -> AccountingState:
     
     # Use the new journal_entries instead of extracted_transactions
     journal_entries = state.get("journal_entries", [])
+    #print(f"Journal entries to post: {journal_entries[0].keys()}")
     if not journal_entries:
         print("  [Ledger Agent] No journal entries to post.")
         return state
         
+      
     if state.get("validation_errors"):
         print("Skipping posting due to existing validation errors.")
         return state
-        
+          
+    print("Posting the following journal entries to the ledger:", state.get('validation_errors'))     
     posted_ids = []
     
     async with AsyncSessionLocal() as session:

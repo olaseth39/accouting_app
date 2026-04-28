@@ -100,15 +100,15 @@ def define_accounting_graph():
     workflow.add_conditional_edges("extraction_agent", should_continue_after_extraction)
 
     #workflow.add_edge("human_merge_agent", "journal_agent")
-    workflow.add_edge("journal_agent", END)
-    #workflow.add_edge("journal_agent", "posting_agent")
-    # workflow.add_edge("posting_agent", "compliance_agent")
-    # workflow.add_edge("compliance_agent", "coa_agent")
-    # workflow.add_edge("coa_agent", "reporting_agent")
-    # workflow.add_edge("reporting_agent", "anomaly_agent")
-    # workflow.add_edge("anomaly_agent", "audit_agent")
+    #workflow.add_edge("journal_agent", END)
+    workflow.add_edge("journal_agent", "posting_agent")
+    workflow.add_edge("posting_agent", "compliance_agent")
+    workflow.add_edge("compliance_agent", "coa_agent")
+    workflow.add_edge("coa_agent", "reporting_agent")
+    workflow.add_edge("reporting_agent", "anomaly_agent")
+    workflow.add_edge("anomaly_agent", "audit_agent")
     
-    #workflow.add_edge("audit_agent", END)
+    workflow.add_edge("audit_agent", END)
     
     # Compile with interrupt for human review
     memory = MemorySaver()

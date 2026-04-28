@@ -18,7 +18,7 @@ def journal_agent(state: AccountingState) -> AccountingState:
     approved_invoices = state.get("human_approved_invoices") or state.get("extracted_receipts", [])
     #approved_invoices = state.get("human_approved_invoices")
     bank_txns = state.get("standardized_bank_transactions", [])
-    print("This is from journal agent (bank_txns):", bank_txns)
+    #print("This is from journal agent (bank_txns):", bank_txns)
     
     if not approved_invoices:
         print("  [Journal Agent] No approved invoices found.")
@@ -125,7 +125,7 @@ def journal_agent(state: AccountingState) -> AccountingState:
                     "date": b_date, "account": "Cash/Bank", "debit": 0.0, "credit": b_amt, "description": b_desc, "ref": "Bank Feed"
                 })
 
-    print("journal entries records",journal_entries)
+    #print("journal entries records",journal_entries)
     return {
         **state,
         "journal_entries": journal_entries,
