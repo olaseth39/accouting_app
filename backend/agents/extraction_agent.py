@@ -111,7 +111,7 @@ def transaction_extraction_agent(state: AccountingState) -> AccountingState:
         md_table = df[required_cols].to_markdown(index=False)
         #print("Generated Markdown table for extracted invoices.", md_table)
         
-    #print("Am at the final part of the extraction agent, preparing return state")    
+    print("Am at the final part of the extraction agent, preparing return state") 
     return {
         "extracted_receipts": extracted_invoices,
         #"human_approved_invoices": extracted_invoices,

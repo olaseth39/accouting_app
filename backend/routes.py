@@ -139,7 +139,7 @@ async def approve_workflow_test(thread_id: str, payload: dict = Body(...)):
     }
 
 
-@router.post("/workflow/{thread_id}/approve")
+@router.post("/workflow/{thread_id}/approve") 
 async def approve_workflow(
     thread_id: str,
     payload: ApprovalRequest = Body(...),
@@ -157,7 +157,7 @@ async def approve_workflow(
          # Debug: show what came in
         print("=== Approve Workflow Called ===")
         print("Thread ID:", thread_id)
-        print("Payload:", payload.dict())
+        print("Payload:", payload.model_dump())
         
          # Wrap ainvoke in try/except
         try:
