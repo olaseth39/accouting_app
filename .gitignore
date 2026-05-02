@@ -22,3 +22,5 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 /backend/agents/llm_utils.py
+
+/backend/alembic/versions/dc04d0caf4b9_create_initial_tables.py
