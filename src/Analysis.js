@@ -1,4 +1,4 @@
-import React, { useState, useContext } from "react";
+import React, { useState, useContext, lazy } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Tabs,
@@ -23,6 +23,8 @@ import {
   TableCell,
   TableBody,
   Fade,
+  CircularProgress,
+  LinearProgress,
 } from "@mui/material";
 
 
@@ -30,10 +32,24 @@ import {
 import { DataGrid } from "@mui/x-data-grid";
 import { DataContext, DataProvider } from "./DataContext";
 import { useLocation } from "react-router-dom";
+
 import { v4 as uuidv4 } from "uuid";
 
+const DetailedLedgerTab = lazy(
+  () => import("./analysis/detailedLedger/DetailedLedgerTab"),
+);
+
 export default function InvoicesPage() {
-  const {invoiceFile, companyName, invoicesData, bankKPIs, setInvoicesData, setBankKPIs, threadId, setThreadId} = useContext(DataContext);
+  const {
+    invoiceFile,
+    companyName,
+    invoicesData,
+    bankKPIs,
+    setInvoicesData,
+    setBankKPIs,
+    threadId,
+    setThreadId,
+  } = useContext(DataContext);
   const [tabIndex, setTabIndex] = useState(0);
   const [openConfirm, setOpenConfirm] = useState(false);
   const navigate = useNavigate();
@@ -43,6 +59,7 @@ export default function InvoicesPage() {
   const [rowToDelete, setRowToDelete] = useState(null);
   const [openDeleteConfirm, setOpenDeleteConfirm] = useState(false);
   const [journalEntries, setJournalEntries] = useState([]);
+  const [ledgerDetails, setLedgerDetails] = useState(null);
 
   const [reconciling, setReconciling] = useState(false);
   const [reconcileStep, setReconcileStep] = useState(0);
@@ -68,21 +85,26 @@ export default function InvoicesPage() {
 // 1. Update the local state to mark all invoices as approved (this gives instant feedback in the UI).
 // 2. Send a request to the backend to trigger the reconciliation process immediately with all invoices marked as approved.
 // 3. Optionally, we can show a loading state while waiting for the backend to process and return the updated journal entries.
+  //   When the user clicks "Approve All Invoices", we want to:
+  // 1. Update the local state to mark all invoices as approved (this gives instant feedback in the UI).
+  // 2. Send a request to the backend to trigger the reconciliation process immediately with all invoices marked as approved.
+  // 3. Optionally, we can show a loading state while waiting for the backend to process and return the updated journal entries.
+
   const handleToggleApprove = async () => {
     if (allApproved) {
       // Unapprove all
-      const unapprovedInvoices = invoiceFile.map(inv => ({
+      const unapprovedInvoices = invoiceFile.map((inv) => ({
         ...inv,
-        approved: false
+        approved: false,
       }));
       setInvoicesData(unapprovedInvoices);
       setAllApproved(false);
       alert("All invoices have been unapproved!");
     } else {
       // Approve all
-      const approvedInvoices = invoiceFile.map(inv => ({
+      const approvedInvoices = invoiceFile.map((inv) => ({
         ...inv,
-        approved: true
+        approved: true,
       }));
       setInvoicesData(approvedInvoices);
       setAllApproved(true);
@@ -101,19 +123,19 @@ export default function InvoicesPage() {
             body: JSON.stringify({
               modifications: {
                 status: "approved",
-                human_approved_invoices: approvedInvoices
-              }
-            })
-          }
+                human_approved_invoices: approvedInvoices,
+              },
+            }),
+          },
         );
 
         setReconcileStep(2); // Step 2: Matching invoices with bank transactions
 
         // ✅ Then fetch updated state
         const stateRes = await fetch(
-          `http://127.0.0.1:8002/agent/session/${threadId}/state`
+          `http://127.0.0.1:8002/agent/session/${threadId}/state`,
         );
-        
+
         const data = await response.json();
         const stateData = await stateRes.json();
         console.log("Raw response:", data.state);
@@ -123,6 +145,21 @@ export default function InvoicesPage() {
           console.log("Journal entries received:", stateData.journal_entries);
           setJournalEntries(stateData.journal_entries);
         }
+        if (stateData.financial_statements.ledger_details) {
+          console.log(
+            "Ledger Details:",
+            stateData.financial_statements.ledger_details,
+          );
+          const lDetails = stateData.financial_statements.ledger_details;
+          const formattedObject = {
+            cash_bank: lDetails["Cash/Bank"],
+            revenue: lDetails["Revenue (Unmatched Payments)"],
+            service_revenue: lDetails["Service Revenue"],
+          };
+
+          console.log("Ledger Details:", formattedObject);
+          setLedgerDetails(formattedObject);
+        }
 
         setReconcileStep(3); // Step 3: Done
       } catch (err) {
@@ -130,15 +167,45 @@ export default function InvoicesPage() {
         setReconciling(false);
       }
     }
-};
+  };
 
   const columns = [
-    { field: "date", headerName: "Date", flex: 1, headerClassName: "custom-header" },
-    { field: "vendor_name", headerName: "Vendor Name", flex: 2, headerClassName: "custom-header" },
-    { field: "client_name", headerName: "Client Name", flex: 2, headerClassName: "custom-header" },
-    { field: "description", headerName: "Description", flex: 3, headerClassName: "custom-header" },
-    { field: "amount", headerName: "Amount", flex: 1, headerClassName: "custom-header" },
-    { field: "source_file", headerName: "Source File", flex: 2, headerClassName: "custom-header" },
+    {
+      field: "date",
+      headerName: "Date",
+      flex: 1,
+      headerClassName: "custom-header",
+    },
+    {
+      field: "vendor_name",
+      headerName: "Vendor Name",
+      flex: 2,
+      headerClassName: "custom-header",
+    },
+    {
+      field: "client_name",
+      headerName: "Client Name",
+      flex: 2,
+      headerClassName: "custom-header",
+    },
+    {
+      field: "description",
+      headerName: "Description",
+      flex: 3,
+      headerClassName: "custom-header",
+    },
+    {
+      field: "amount",
+      headerName: "Amount",
+      flex: 1,
+      headerClassName: "custom-header",
+    },
+    {
+      field: "source_file",
+      headerName: "Source File",
+      flex: 2,
+      headerClassName: "custom-header",
+    },
     {
       field: "approved",
       headerName: "Approved",
@@ -156,9 +223,9 @@ export default function InvoicesPage() {
         >
           {params.row.approved ? "Approved" : "Unapprove"}
         </Button>
-      )
+      ),
     },
-]
+  ];
 
   const handleBack = () => {
     navigate("/");
@@ -170,42 +237,39 @@ export default function InvoicesPage() {
     setOpenConfirm(false);
     navigate("/"); // go back after clearing
   };
-  
+
   const handleRowApprove = (rowId) => {
-  const updatedInvoices = invoiceFile.map((inv, idx) =>
-    idx + 1 === rowId ? { ...inv, approved: true } : inv
-  );
-  setInvoicesData(updatedInvoices);
-};
+    const updatedInvoices = invoiceFile.map((inv, idx) =>
+      idx + 1 === rowId ? { ...inv, approved: true } : inv,
+    );
+    setInvoicesData(updatedInvoices);
+  };
 
-  
-const handleRowUnapprove = (rowId) => {
-  // Mark the row as unapproved
-  const updatedInvoices = invoiceFile.map((inv, idx) =>
-    idx + 1 === rowId ? { ...inv, approved: false } : inv
-  );
-  setInvoicesData(updatedInvoices);
+  const handleRowUnapprove = (rowId) => {
+    // Mark the row as unapproved
+    const updatedInvoices = invoiceFile.map((inv, idx) =>
+      idx + 1 === rowId ? { ...inv, approved: false } : inv,
+    );
+    setInvoicesData(updatedInvoices);
 
-  // Prompt for deletion
-  setRowToDelete(rowId);
-  setOpenDeleteConfirm(true);
-};
+    // Prompt for deletion
+    setRowToDelete(rowId);
+    setOpenDeleteConfirm(true);
+  };
 
-// console.log("InvoicesPage threadId:", threadId);
+  // console.log("InvoicesPage threadId:", threadId);
 
+  // const handleRowToggle = (rowId) => {
+  //   const updatedInvoices = invoiceFile.map((inv, idx) =>
+  //     idx + 1 === rowId ? { ...inv, approved: !inv.approved } : inv
+  //   );
+  //   setInvoicesData(updatedInvoices);
+  // };
 
-// const handleRowToggle = (rowId) => {
-//   const updatedInvoices = invoiceFile.map((inv, idx) =>
-//     idx + 1 === rowId ? { ...inv, approved: !inv.approved } : inv
-//   );
-//   setInvoicesData(updatedInvoices);
-// };
-
-return (
-   <Box sx={{ width: "100%"  }}>
-
+  return (
+    <Box sx={{ width: "100%" }}>
       {/* Header */}
-          {/* <header className="app-header">
+      {/* <header className="app-header">
             <Typography variant="h4" className="header-title">
                Financial Analysis App
             </Typography>
@@ -214,7 +278,19 @@ return (
       <header class="nav">
         <div class="brand">
           <div class="logo">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 5-5"/></svg>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#34d399"
+              stroke-width="2.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M3 3v18h18" />
+              <path d="M7 14l3-3 3 3 5-5" />
+            </svg>
           </div>
           <div class="brand-text">
             <b>AI Bookkeeper</b>
@@ -236,8 +312,19 @@ return (
         </div>
       </header>
 
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px" }}>
-        <Typography variant="h4" gutterBottom sx={{ fontWeight: "700", color: "#dde1eb"}}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "20px",
+        }}
+      >
+        <Typography
+          variant="h4"
+          gutterBottom
+          sx={{ fontWeight: "700", color: "#dde1eb" }}
+        >
           Reconciliation & Analysis
         </Typography>
 
@@ -246,7 +333,12 @@ return (
           <Button
             variant="outlined"
             onClick={handleBack}
-            sx={{ borderRadius: "8px", fontWeight: "600", color: "#1d4ed8", borderColor: "#1d4ed8" }}
+            sx={{
+              borderRadius: "8px",
+              fontWeight: "600",
+              color: "#1d4ed8",
+              borderColor: "#1d4ed8",
+            }}
           >
             ⬅ Back to Upload
           </Button>
@@ -270,10 +362,16 @@ return (
             onClick={handleToggleApprove}
             sx={{ borderRadius: "8px", fontWeight: "600" }}
           >
+
             {allApproved ? "❌ Unapprove All Invoices" : "✅ Approve All Invoices"}
         </Button>
       </> 
       )}
+            {/* {allApproved
+              ? "❌ Unapprove All Invoices"
+              : "✅ Approve All Invoices"}
+            
+          </Button> */}
         </Box>
       </Box>
 
@@ -282,7 +380,8 @@ return (
         <DialogTitle>Confirm Clear Data</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to clear all invoices and KPIs? This action cannot be undone.
+            Are you sure you want to clear all invoices and KPIs? This action
+            cannot be undone.
           </DialogContentText>
         </DialogContent>
         <DialogActions>
@@ -295,7 +394,10 @@ return (
         </DialogActions>
       </Dialog>
 
-      <Dialog open={openDeleteConfirm} onClose={() => setOpenDeleteConfirm(false)}>
+      <Dialog
+        open={openDeleteConfirm}
+        onClose={() => setOpenDeleteConfirm(false)}
+      >
         <DialogTitle>Confirm Delete</DialogTitle>
         <DialogContent>
           <DialogContentText>
@@ -309,7 +411,7 @@ return (
           <Button
             onClick={() => {
               const updatedInvoices = invoiceFile.filter(
-                (inv, idx) => idx + 1 !== rowToDelete
+                (inv, idx) => idx + 1 !== rowToDelete,
               );
               setInvoicesData(updatedInvoices);
               setOpenDeleteConfirm(false);
@@ -322,7 +424,6 @@ return (
           </Button>
         </DialogActions>
       </Dialog>
-
 
       {/* <Tabs value={tabIndex} onChange={(e, v) => setTabIndex(v)} sx={{ marginBottom: "20px" }}>
         <Tab label="Invoices & Receipts" />
@@ -340,9 +441,9 @@ return (
         sx={{
           width: "100%",
           marginBottom: "20px",
-          backgroundColor: "transparent",       // same as page background
+          backgroundColor: "transparent", // same as page background
           "& .MuiTab-root": {
-            color: "#fff",                       // default text white
+            color: "#fff", // default text white
             fontWeight: 600,
             textTransform: "none",
             fontSize: "16px",
@@ -350,11 +451,11 @@ return (
             transition: "background-color 0.3s ease",
           },
           "& .Mui-selected": {
-            color: "#fff",                       // keep selected text white
-            backgroundColor: "#0d47a1",          // dark blue highlight for selected tab
+            color: "#fff", // keep selected text white
+            backgroundColor: "#0d47a1", // dark blue highlight for selected tab
           },
           "& .MuiTabs-indicator": {
-            backgroundColor: "transparent",      // remove yellow underline, blend in
+            backgroundColor: "transparent", // remove yellow underline, blend in
           },
         }}
       >
@@ -368,19 +469,17 @@ return (
         <Tab label="CFO Chat" />
       </Tabs>
 
-
       {tabIndex === 0 && (
-        <Card 
+        <Card
           // sx={{ padding: "20px" }}
           sx={{
             padding: "20px",
             backgroundColor: "rgba(255, 255, 255, 0.01)", // subtle translucent layer over page bg
             borderRadius: "12px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",       // soft shadow for depth
-            backdropFilter: "blur(6px)",                   // glassy effect
-            color: "#fff",                                 // text stays white
+            boxShadow: "0 4px 12px rgba(0,0,0,0.2)", // soft shadow for depth
+            backdropFilter: "blur(6px)", // glassy effect
+            color: "#fff", // text stays white
           }}
-        
         >
           <Typography variant="h6" gutterBottom>
             Extracted Invoices (For Verification)
@@ -400,38 +499,37 @@ return (
             autoHeight
           /> */}
 
-            <DataGrid
-                rows={invoiceFile.map((inv, idx) => ({ id: idx + 1, ...inv }))}
-                columns={columns}
-                autoHeight
-                sx={{
-                  padding: "20px",
-                  backgroundColor: "rgba(255, 255, 255, 0.01)",
-                  color: "#fff",
+          <DataGrid
+            rows={invoiceFile.map((inv, idx) => ({ id: idx + 1, ...inv }))}
+            columns={columns}
+            autoHeight
+            sx={{
+              padding: "20px",
+              backgroundColor: "rgba(255, 255, 255, 0.01)",
+              color: "#fff",
 
-                  // Header row container
-                  "& .MuiDataGrid-columnHeaders": {
-                    backgroundColor: "rgba(255,255,255,0.08)",
-                  },
+              // Header row container
+              "& .MuiDataGrid-columnHeaders": {
+                backgroundColor: "rgba(255,255,255,0.08)",
+              },
 
-                  // Header cells (this is where headerName text lives)
-                  "& .MuiDataGrid-columnHeader": {
-                    backgroundColor: "rgba(255,255,255,0.08)",
-                    color: "#fff",
-                    fontWeight: 700,
-                  },
+              // Header cells (this is where headerName text lives)
+              "& .MuiDataGrid-columnHeader": {
+                backgroundColor: "rgba(255,255,255,0.08)",
+                color: "#fff",
+                fontWeight: 700,
+              },
 
-                  "& .MuiDataGrid-cell": {
-                    color: "#fff",
-                    borderBottom: "1px solid rgba(255,255,255,0.1)",
-                  },
+              "& .MuiDataGrid-cell": {
+                color: "#fff",
+                borderBottom: "1px solid rgba(255,255,255,0.1)",
+              },
 
-                  "& .MuiDataGrid-row:hover": {
-                    backgroundColor: "rgba(255,255,255,0.1)",
-                  },
-                }}
-            />
-
+              "& .MuiDataGrid-row:hover": {
+                backgroundColor: "rgba(255,255,255,0.1)",
+              },
+            }}
+          />
         </Card>
       )}
 
@@ -541,8 +639,21 @@ return (
 
         {/* tab for ledger */}
        
-
-        {reconciling && (
+      {tabIndex === 4 && ( // Detailed ledger
+        <Card
+          sx={{
+            padding: "20px",
+            backgroundColor: "rgba(255, 255, 255, 0.05)",
+            borderRadius: "12px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+            backdropFilter: "blur(6px)",
+            color: "#fff",
+          }}
+        >
+          <DetailedLedgerTab ledgerSections={ledgerDetails} />
+        </Card>
+      )}
+      {reconciling && (
         <Box
           sx={{
             position: "fixed",
@@ -558,6 +669,7 @@ return (
             zIndex: 1300,
           }}
         >
+
           <Card sx={{ padding: "30px", borderRadius: "12px", textAlign: "center", minWidth: "300px" }}>
             {reconcileStep < 3 ? (
               <>
@@ -571,7 +683,7 @@ return (
             ) : (
               <>
                 <Typography variant="h6" sx={{ marginBottom: 2 }}>
-                  ✅ Reconciliation complete! Please check the Journal tab for records.
+                  ✅ Reconciliation complete! Please check required tabs for records.
                 </Typography>
                 <Button
                   variant="contained"
@@ -621,7 +733,7 @@ return (
           <Typography variant="body1" sx={{ color: "#fff", mt: 2 }}>
             The Financial Modeling Agent is working on your request...
           </Typography>
-        </Box>
+      </Box>
       </Fade>
     ) : modelOutput ? (
         // 3. Model output (your existing block)
@@ -798,20 +910,20 @@ return (
               },
             }}
           />
-        <FormGroup sx={{ mt: 2, alignSelf: "flex-start" }}>
-          <FormControlLabel
-            control={<Checkbox checked={usePL} onChange={(e) => setUsePL(e.target.checked)} />}
-            label="Use Profit & Loss"
-          />
-          <FormControlLabel
-            control={<Checkbox checked={useBS} onChange={(e) => setUseBS(e.target.checked)} />}
-            label="Use Balance Sheet"
-          />
-          <FormControlLabel
-            control={<Checkbox checked={useLedger} onChange={(e) => setUseLedger(e.target.checked)} />}
-            label="Use Ledger"
-          />
-        </FormGroup>
+          <FormGroup sx={{ mt: 2, alignSelf: "flex-start" }}>
+            <FormControlLabel
+              control={<Checkbox checked={usePL} onChange={(e) => setUsePL(e.target.checked)} />}
+              label="Use Profit & Loss"
+            />
+            <FormControlLabel
+              control={<Checkbox checked={useBS} onChange={(e) => setUseBS(e.target.checked)} />}
+              label="Use Balance Sheet"
+            />
+            <FormControlLabel
+              control={<Checkbox checked={useLedger} onChange={(e) => setUseLedger(e.target.checked)} />}
+              label="Use Ledger"
+            />
+          </FormGroup>
         <TextField
           fullWidth
           label="Specific Requirements"
@@ -1009,6 +1121,46 @@ return (
     </Box>
   </Box>
 )}
+      
+        <Card
+          sx={{
+            padding: "30px",
+            borderRadius: "12px",
+            textAlign: "center",
+            minWidth: "300px",
+          }}
+        >
+          {reconcileStep < 3 ? (
+            <>
+              <CircularProgress color="primary" />
+              <Typography variant="h6" sx={{ marginTop: 2 }}>
+                {reconcileStep === 1 && "🔄 Starting reconciliation…"}
+                {reconcileStep === 2 &&
+                  "📑 Matching invoices with bank transactions…"}
+              </Typography>
+              <LinearProgress sx={{ width: "100%", marginTop: 2 }} />
+            </>
+          ) : (
+            <>
+              <Typography variant="h6" sx={{ marginBottom: 2 }}>
+                ✅ Reconciliation complete! Please check the Journal tab for
+                records.
+              </Typography>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => {
+                  setReconciling(false); // hide overlay
+                  setReconcileStep(0); // reset steps
+                }}
+              >
+                OK
+              </Button>
+            </>
+          )}
+        </Card>
+        {/* </Box> */}
+      {/* )} */}
 
     {/* email pop up */}
 
@@ -1063,7 +1215,7 @@ return (
 
 
       {/* Footer */}
-        {/* <footer
+      {/* <footer
           style={{
             backgroundColor: "rgba(29,78,216,0.9)",
             padding: "15px",
@@ -1077,11 +1229,15 @@ return (
       </footer> */}
 
       <footer class="foot">
-        <div>© 2026 AI Bookkeeper <span class="dot"></span> Powered by Snapnet Team</div>
-        <div>Privacy <span class="dot"></span> Terms <span class="dot"></span> Support</div>
+        <div>
+          © 2026 AI Bookkeeper <span class="dot"></span> Powered by Snapnet Team
+        </div>
+        <div>
+          Privacy <span class="dot"></span> Terms <span class="dot"></span>{" "}
+          Support
+        </div>
       </footer>
     </Box>
-  
-  );
-}
 
+  )
+}

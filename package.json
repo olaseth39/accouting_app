@@ -5,6 +5,7 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.0.0",
     "@mui/material": "^9.0.0",
     "@mui/x-data-grid": "^9.0.1",
     "@testing-library/dom": "^10.4.1",
@@ -44,8 +45,12 @@
       "last 1 safari version"
     ]
   },
+<<<<<<< HEAD
   "proxy": "http://localhost:8000",
   "devDependencies": {
     "@types/uuid": "^10.0.0"
   }
+=======
+  "proxy": "http://localhost:8001"
+>>>>>>> origin/Ledgers
 }
