@@ -24,11 +24,13 @@ import {
   TableBody,
   Fade,
 } from "@mui/material";
+
+
 // import { BarChart, Bar } from "recharts";
 import { DataGrid } from "@mui/x-data-grid";
 import { DataContext, DataProvider } from "./DataContext";
 import { useLocation } from "react-router-dom";
-
+import { v4 as uuidv4 } from "uuid";
 
 export default function InvoicesPage() {
   const {invoiceFile, companyName, invoicesData, bankKPIs, setInvoicesData, setBankKPIs, threadId, setThreadId} = useContext(DataContext);
@@ -56,9 +58,33 @@ export default function InvoicesPage() {
 
   const [isLoading, setIsLoading] = useState(false);
 
+  //EMail
+  const [openEmailModal, setOpenEmailModal] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState("");
 
+  // for ledger
+   // console.log(tableData);
+  // const total_debit = tableData.reduce((total, value) => {
+  //   return total + value.debit;
+  // }, 0);
+  // const total_credit = tableData.reduce((total, value) => {
+  //   return total + value.credit;
+  // }, 0);
+  // const net = total_debit - total_credit;
+  // const formattedTotalDebit = formatToNairaCurrency(total_debit || 0);
+  // const formattedTotalCredit = formatToNairaCurrency(total_credit || 0);
+  // const formattedNet = formatToNairaCurrency(net || 0);
+  // const formattedTableData = tableData.map((data) => {
+  //   return {
+  //     date: data.date,
+  //     description: data.description,
+  //     debit: data.debit,
+  //     credit: data.credit,
+  //     ref: data.ref,
+  //   };
+  // });
 
-
+ 
 //   When the user clicks "Approve All Invoices", we want to:
 // 1. Update the local state to mark all invoices as approved (this gives instant feedback in the UI).
 // 2. Send a request to the backend to trigger the reconciliation process immediately with all invoices marked as approved.
@@ -467,75 +493,179 @@ return (
         )} */}
 
        {tabIndex === 3 && ( // Journal Entries tab
-  <Card
-    sx={{
-      padding: "20px",
-      backgroundColor: "rgba(255, 255, 255, 0.05)", 
-      borderRadius: "12px",
-      boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-      backdropFilter: "blur(6px)",
-      color: "#fff",
-    }}
-  >
-    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-      Journal Entries (Reconciled Records)
-    </Typography>
+          <Card
+            sx={{
+              padding: "20px",
+              backgroundColor: "rgba(255, 255, 255, 0.05)", 
+              borderRadius: "12px",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+              backdropFilter: "blur(6px)",
+              color: "#fff",
+            }}
+          >
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+              Journal Entries (Reconciled Records)
+            </Typography>
 
-    <DataGrid
-      rows={journalEntries.map((entry, idx) => ({ id: idx + 1, ...entry }))}
-      columns={[
-        { field: "date", headerName: "Date", flex: 1, headerClassName: "custom-header" },
-        { field: "account", headerName: "Account", flex: 2, headerClassName: "custom-header" },
-        { field: "debit", headerName: "Debit", flex: 1, headerClassName: "custom-header" },
-        { field: "credit", headerName: "Credit", flex: 1, headerClassName: "custom-header" },
-        { field: "description", headerName: "Description", flex: 3, headerClassName: "custom-header" },
-        { field: "ref", headerName: "Source File", flex: 2, headerClassName: "custom-header" }
-      ]}
-      autoHeight
-      pageSize={5}
-      sx={{
-        backgroundColor: "transparent",
-        color: "#fff",
+            <DataGrid
+              rows={journalEntries.map((entry, idx) => ({ id: idx + 1, ...entry }))}
+              columns={[
+                { field: "date", headerName: "Date", flex: 1, headerClassName: "custom-header" },
+                { field: "account", headerName: "Account", flex: 2, headerClassName: "custom-header" },
+                { field: "debit", headerName: "Debit", flex: 1, headerClassName: "custom-header" },
+                { field: "credit", headerName: "Credit", flex: 1, headerClassName: "custom-header" },
+                { field: "description", headerName: "Description", flex: 3, headerClassName: "custom-header" },
+                { field: "ref", headerName: "Source File", flex: 2, headerClassName: "custom-header" }
+              ]}
+              autoHeight
+              pageSize={5}
+              sx={{
+                backgroundColor: "transparent",
+                color: "#fff",
 
-        // Header row container
-        "& .MuiDataGrid-columnHeaders": {
-          backgroundColor: "rgba(255,255,255,0.08)", // dark overlay instead of white
-        },
+                // Header row container
+                "& .MuiDataGrid-columnHeaders": {
+                  backgroundColor: "rgba(255,255,255,0.08)", // dark overlay instead of white
+                },
 
-        // Header cells
-        "& .MuiDataGrid-columnHeader": {
-          color: "#fff",
-          fontWeight: 700,
-        },
+                // Header cells
+                "& .MuiDataGrid-columnHeader": {
+                  color: "#fff",
+                  fontWeight: 700,
+                },
 
-        // Header text span
-        "& .MuiDataGrid-columnHeaderTitle": {
-          color: "#fff",
-        },
+                // Header text span
+                "& .MuiDataGrid-columnHeaderTitle": {
+                  color: "#fff",
+                },
 
-        // Body cells
-        "& .MuiDataGrid-cell": {
-          color: "#fff",
-          borderBottom: "1px solid rgba(255,255,255,0.1)",
-        },
+                // Body cells
+                "& .MuiDataGrid-cell": {
+                  color: "#fff",
+                  borderBottom: "1px solid rgba(255,255,255,0.1)",
+                },
 
-        // Row hover
-        "& .MuiDataGrid-row:hover": {
-          backgroundColor: "rgba(255,255,255,0.1)",
-        },
+                // Row hover
+                "& .MuiDataGrid-row:hover": {
+                  backgroundColor: "rgba(255,255,255,0.1)",
+                },
 
-        // Selected row
-        "& .MuiDataGrid-row.Mui-selected": {
-          backgroundColor: "rgba(13,71,161,0.6)",
-          color: "#fff",
-        },
-      }}
-    />
-  </Card>
-)}
+                // Selected row
+                "& .MuiDataGrid-row.Mui-selected": {
+                  backgroundColor: "rgba(13,71,161,0.6)",
+                  color: "#fff",
+                },
+              }}
+            />
+          </Card>
+        )}
+
+        {/* tab for ledger */}
+        {/* {tabIndex == 4 && (
+            <div
+              style={{
+                width: "100%",
+                display: "flex",
+                flexDirection: "column",
+                gap: "20px",
+              }}
+            >
+              <DataGrid
+                rows={formattedTableData.map((entry, idx) => ({
+                  id: idx + 1,
+                  ...entry,
+                }))}
+                columns={[
+                  {
+                    field: "date",
+                    headerName: "Date",
+                    flex: 1,
+                    headerClassName: "custom-header",
+                  },
+                  {
+                    field: "description",
+                    headerName: "Desription",
+                    flex: 3,
+                    headerClassName: "custom-header",
+                  },
+                  {
+                    field: "debit",
+                    headerName: "Debit",
+                    flex: 1,
+                    headerClassName: "custom-header",
+                  },
+                  {
+                    field: "credit",
+                    headerName: "Credit",
+                    flex: 1,
+                    headerClassName: "custom-header",
+                  },
+                  {
+                    field: "ref",
+                    headerName: "Source File",
+                    flex: 1,
+                    headerClassName: "custom-header",
+                  },
+                ]}
+                sx={{
+                  backgroundColor: "transparent",
+                  color: "#fff",
+
+                  // Header row container
+                  "& .MuiDataGrid-columnHeaders": {
+                    backgroundColor: "rgba(255,255,255,0.08)", // dark overlay instead of white
+                  },
+
+                  // Header cells
+                  "& .MuiDataGrid-columnHeader": {
+                    color: "#fff",
+                    fontWeight: 700,
+                  },
+
+                  // Header text span
+                  "& .MuiDataGrid-columnHeaderTitle": {
+                    color: "#fff",
+                  },
+
+                  // Body cells
+                  "& .MuiDataGrid-cell": {
+                    color: "#fff",
+                    borderBottom: "1px solid rgba(255,255,255,0.1)",
+                  },
+
+                  // Row hover
+                  "& .MuiDataGrid-row:hover": {
+                    backgroundColor: "rgba(255,255,255,0.1)",
+                  },
+
+                  // Selected row
+                  "& .MuiDataGrid-row.Mui-selected": {
+                    backgroundColor: "rgba(13,71,161,0.6)",
+                    color: "#fff",
+                  },
+                }}
+              />
+              <div style={{ display: "flex", gap: "8px", color: "var(--text)" }}>
+                <div>
+                  <span>{`Total Credit: `}</span>
+                  <span>{formattedTotalDebit}</span>
+                </div>
+                <span>|</span>
+                <div>
+                  <span>{`Total Debit: `}</span> <span>{formattedTotalCredit}</span>
+                </div>
+                <span>|</span>
+                <div>
+                  <span>{`Net: `}</span>
+                  <span>{formattedNet}</span>
+                </div>
+              </div>
+            </div>
+
+        )} */}
 
 
-       {reconciling && (
+        {reconciling && (
         <Box
           sx={{
             position: "fixed",
@@ -551,36 +681,36 @@ return (
             zIndex: 1300,
           }}
         >
-    <Card sx={{ padding: "30px", borderRadius: "12px", textAlign: "center", minWidth: "300px" }}>
-      {reconcileStep < 3 ? (
-        <>
-          <CircularProgress color="primary" />
-          <Typography variant="h6" sx={{ marginTop: 2 }}>
-            {reconcileStep === 1 && "🔄 Starting reconciliation…"}
-            {reconcileStep === 2 && "📑 Matching invoices with bank transactions…"}
-          </Typography>
-          <LinearProgress sx={{ width: "100%", marginTop: 2 }} />
-        </>
-      ) : (
-        <>
-          <Typography variant="h6" sx={{ marginBottom: 2 }}>
-            ✅ Reconciliation complete! Please check the Journal tab for records.
-          </Typography>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => {
-              setReconciling(false);   // hide overlay
-              setReconcileStep(0);     // reset steps
-            }}
-          >
-            OK
-          </Button>
-        </>
+          <Card sx={{ padding: "30px", borderRadius: "12px", textAlign: "center", minWidth: "300px" }}>
+            {reconcileStep < 3 ? (
+              <>
+                <CircularProgress color="primary" />
+                <Typography variant="h6" sx={{ marginTop: 2 }}>
+                  {reconcileStep === 1 && "🔄 Starting reconciliation…"}
+                  {reconcileStep === 2 && "📑 Matching invoices with bank transactions…"}
+                </Typography>
+                <LinearProgress sx={{ width: "100%", marginTop: 2 }} />
+              </>
+            ) : (
+              <>
+                <Typography variant="h6" sx={{ marginBottom: 2 }}>
+                  ✅ Reconciliation complete! Please check the Journal tab for records.
+                </Typography>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={() => {
+                    setReconciling(false);   // hide overlay
+                    setReconcileStep(0);     // reset steps
+                  }}
+                >
+                  OK
+                </Button>
+              </>
+            )}
+          </Card>
+        </Box>
       )}
-    </Card>
-  </Box>
-)}
 
 {/* financial model */}
 {tabIndex === 6 && (
@@ -636,10 +766,22 @@ return (
           <Typography variant="h6" sx={{ color: "#fff", mb: 2 }}>
             Assumptions
           </Typography>
-          <ul>
+          {/* <ul>
             {modelOutput.assumptions?.map((a, idx) => (
               <li key={idx} style={{ color: "white" }}>
                 {a.description} {a.value ? `: ${a.value}` : ""}
+              </li>
+            ))}
+          </ul> */}
+
+          <ul>
+            {modelOutput.assumptions?.map((assumptionObj, idx) => (
+              <li key={idx} style={{ color: "white" }}>
+                {Object.entries(assumptionObj).map(([key, val]) => (
+                  <div key={key}>
+                    <strong>{key}</strong>: {val}
+                  </div>
+                ))}
               </li>
             ))}
           </ul>
@@ -711,7 +853,18 @@ return (
               <Button
                 variant="outlined"
                 sx={{ mr: 2 }}
-                onClick={() => setModelOutput(null)}
+                onClick={() => {
+                  setModelOutput(null);
+                  // setModelGoal("");
+                  // setModelReqs("");
+                  // setUsePL(false);
+                  // setUseBS(false);
+                  // setUseLedger(false);
+                  // setIsLoading(false);
+
+                  //setThreadId(uuidv4());  // new session ID
+                  }
+                }
               >
                 Run New Model
               </Button>
@@ -725,8 +878,10 @@ return (
               <Button
                 variant="contained"
                 color="info"
+                sx={{ mr: 2 }}
                 onClick={() => {
-                  alert("Email functionality coming soon!");
+                  //alert("Email functionality coming soon!");
+                  setOpenEmailModal(true)
                 }}
               >
                 Send via Email
@@ -845,8 +1000,6 @@ return (
     </Box>
   </Box>
 )}  
-
-
 
 {/* chat panel */}
 {tabIndex === 7 && (
@@ -979,6 +1132,57 @@ return (
     </Box>
   </Box>
 )}
+
+    {/* email pop up */}
+
+<Dialog open={openEmailModal} onClose={() => setOpenEmailModal(false)}>
+  <DialogTitle>Send Report via Email</DialogTitle>
+  <DialogContent>
+    <TextField
+      autoFocus
+      margin="dense"
+      label="Recipient Email"
+      type="email"
+      fullWidth
+      value={recipientEmail}
+      onChange={(e) => setRecipientEmail(e.target.value)}
+    />
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setOpenEmailModal(false)}>Cancel</Button>
+    <Button
+      onClick={async () => {
+        try {
+          const res = await fetch("http://127.0.0.1:8002/agent/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: recipientEmail,
+              subject: "Financial Forecast Report",
+              // body: JSON.stringify(modelOutput, null, 2), // or format nicely
+              body: "Hello,\n\nPlease find attached the latest financial forecast generated by our modeling agent...",
+              forecast: modelOutput
+            }),
+          });
+          if (res.ok) {
+            console.log("Value of res",res)
+            alert("Email sent successfully!");
+          } else {
+            alert("Failed to send email.");
+          }
+        } catch (err) {
+          console.error(err);
+          alert("Error sending email.");
+        } finally {
+          setOpenEmailModal(false);
+        }
+      }}
+    >
+      Send
+    </Button>
+  </DialogActions>
+</Dialog>
+
 
 
       {/* Footer */}
