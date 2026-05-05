@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
+  CircularProgress,
   LinearProgress,
   TextField,
   FormGroup,
@@ -23,8 +24,10 @@ import {
   TableCell,
   TableBody,
   Fade,
-  CircularProgress,
   CardContent,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from "@mui/material";
 
 
@@ -36,11 +39,18 @@ import { useLocation } from "react-router-dom";
 import { v4 as uuidv4 } from "uuid";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+// import { BarChart, Bar } from "recharts";
+// import { DataGrid } from "@mui/x-data-grid";
+// import { DataContext } from "./DataContext";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 
 const DetailedLedgerTab = lazy(
   () => import("./analysis/detailedLedger/DetailedLedgerTab"),
 );
-
+  
 export default function InvoicesPage() {
   const {
     invoiceFile,
@@ -55,8 +65,6 @@ export default function InvoicesPage() {
   const [tabIndex, setTabIndex] = useState(0);
   const [openConfirm, setOpenConfirm] = useState(false);
   const navigate = useNavigate();
-  const location = useLocation();
-  const transactions = location.state?.transactions || [];
   const [allApproved, setAllApproved] = useState(false);
   const [rowToDelete, setRowToDelete] = useState(null);
   const [openDeleteConfirm, setOpenDeleteConfirm] = useState(false);
@@ -85,6 +93,16 @@ export default function InvoicesPage() {
 // 1. Update the local state to mark all invoices as approved (this gives instant feedback in the UI).
 // 2. Send a request to the backend to trigger the reconciliation process immediately with all invoices marked as approved.
 // 3. Optionally, we can show a loading state while waiting for the backend to process and return the updated journal entries.
+  // Trial Balance Tab State
+  const [trialBalanceReport, setTrialBalanceReport] = useState("");
+  const [trialBalanceData, setTrialBalanceData] = useState([]);
+  const [tbTotalDebits, setTbTotalDebits] = useState(0);
+  const [tbTotalCredits, setTbTotalCredits] = useState(0);
+  const [tbLoading, setTbLoading] = useState(false);
+  const [tbConfirmed, setTbConfirmed] = useState(false);
+  const [tbError, setTbError] = useState("");
+  const [reportAccordionExpanded, setReportAccordionExpanded] = useState(true);
+
   //   When the user clicks "Approve All Invoices", we want to:
   // 1. Update the local state to mark all invoices as approved (this gives instant feedback in the UI).
   // 2. Send a request to the backend to trigger the reconciliation process immediately with all invoices marked as approved.
@@ -257,6 +275,120 @@ export default function InvoicesPage() {
     setOpenDeleteConfirm(true);
   };
 
+
+  // Helper function to format currency with ₦ symbol
+  const formatCurrency = (amount) => {
+    if (amount === null || amount === undefined) return "₦0.00";
+    return `₦${parseFloat(amount).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  // Fetch trial balance data when tab 5 is selected
+  const fetchTrialBalance = React.useCallback(async () => {
+    if (!threadId) return;
+
+    setTbLoading(true);
+    setTbError("");
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8002/agent/session/${threadId}/state`,
+      );
+      if (!response.ok) throw new Error("Failed to fetch trial balance");
+
+      const data = await response.json();
+      console.log("Full state received:", data);
+
+      // Extract trial balance report from elaborate_narratives
+      const report =
+        data?.elaborate_narratives?.trial_balance_report ||
+        "No report available";
+      setTrialBalanceReport(report);
+
+      // Extract trial balance data from financial_statements
+      const trialBalanceObj = data?.financial_statements?.trial_balance || {};
+
+      // Extract accounts array
+      const accounts = trialBalanceObj.accounts || [];
+      setTrialBalanceData(accounts);
+
+      // Extract totals
+      setTbTotalDebits(trialBalanceObj.total_debits || 0);
+      setTbTotalCredits(trialBalanceObj.total_credits || 0);
+    } catch (error) {
+      console.error("Error fetching trial balance:", error);
+      setTbError("Failed to load trial balance data. Please try again.");
+    } finally {
+      setTbLoading(false);
+    }
+  }, [threadId]);
+
+  // Effect to fetch trial balance when tab is selected
+  React.useEffect(() => {
+    if (tabIndex === 5 && threadId) {
+      fetchTrialBalance();
+    }
+  }, [tabIndex, threadId, fetchTrialBalance]);
+
+  // Handle trial balance confirmation
+  const handleConfirmTrialBalance = async () => {
+    if (!threadId) return;
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8002/agent/session/${threadId}/confirm-trial-balance`,
+        { method: "POST", headers: { "Content-Type": "application/json" } },
+      );
+
+      if (!response.ok) throw new Error("Confirmation failed");
+
+      setTbConfirmed(true);
+      alert("✓ Trial Balance Confirmed! Generating Financial Statements...");
+    } catch (error) {
+      console.error("Error confirming trial balance:", error);
+      alert("Error confirming trial balance. Please try again.");
+    }
+  };
+
+const MarkdownRenderer = ({ text }) => (
+  <ReactMarkdown
+    remarkPlugins={[remarkGfm]}
+    components={{
+      h3: ({ node, ...props }) => (
+        <Typography
+          variant="h6"
+          sx={{ color: "#fff", mt: 3, mb: 1 }}
+          {...props}
+        />
+      ),
+      h4: ({ node, ...props }) => (
+        <Typography
+          variant="subtitle1"
+          sx={{ color: "#fff", mt: 2, mb: 1 }}
+          {...props}
+        />
+      ),
+      p: ({ node, ...props }) => (
+        <Typography
+          sx={{ color: "#ddd", mb: 1.2, fontSize: "0.95rem" }}
+          {...props}
+        />
+      ),
+      li: ({ node, ...props }) => (
+        <Typography
+          component="li"
+          sx={{ color: "#ddd", ml: 3, mb: 0.5 }}
+          {...props}
+        />
+      ),
+      ul: ({ node, ...props }) => (
+        <Box component="ul" sx={{ pl: 2, mb: 1.5 }} {...props} />
+      ),
+    }}
+  >
+    {text}
+  </ReactMarkdown>
+);
+
   return (
     <Box sx={{ width: "100%" }}>
       
@@ -298,14 +430,14 @@ export default function InvoicesPage() {
           alignItems: "center",
           padding: "20px",
         }}
-      >
-        <Typography
-          variant="h4"
-          gutterBottom
-          sx={{ fontWeight: "700", color: "#dde1eb" }}
         >
-          Reconciliation & Analysis
-        </Typography>
+          <Typography
+            variant="h4"
+            gutterBottom
+            sx={{ fontWeight: "700", color: "#dde1eb" }}
+          >
+            Reconciliation & Analysis
+          </Typography>
 
         <Box sx={{ display: "flex", gap: "10px" }}>
           {/* Back Button */}
@@ -325,27 +457,27 @@ export default function InvoicesPage() {
           {/* ✅ Only show these when tabIndex === 0 */}
           {tabIndex === 0 && (
             <>
-          {/* Clear Data Button */}
-          <Button
-            variant="contained"
-            color="error"
-            onClick={() => setOpenConfirm(true)}
-            sx={{ borderRadius: "8px", fontWeight: "600" }}
-          >
-            🗑 Clear Data
-          </Button>
-          {/* Approval button */}
-          <Button
-            variant="contained"
-            color={allApproved ? "warning" : "success"}
-            onClick={handleToggleApprove}
-            sx={{ borderRadius: "8px", fontWeight: "600" }}
-          >
+                {/* Clear Data Button */}
+                <Button
+                  variant="contained"
+                  color="error"
+                  onClick={() => setOpenConfirm(true)}
+                  sx={{ borderRadius: "8px", fontWeight: "600" }}
+                >
+                  🗑 Clear Data
+                </Button>
+                {/* Approval button */}
+                <Button
+                  variant="contained"
+                  color={allApproved ? "warning" : "success"}
+                  onClick={handleToggleApprove}
+                  sx={{ borderRadius: "8px", fontWeight: "600" }}
+                >
 
-            {allApproved ? "❌ Unapprove All Invoices" : "✅ Approve All Invoices"}
-        </Button>
-      </> 
-      )}
+                  {allApproved ? "❌ Unapprove All Invoices" : "✅ Approve All Invoices"}
+              </Button>
+            </> 
+          )}           
         </Box>
       </Box>
 
@@ -398,7 +530,7 @@ export default function InvoicesPage() {
           </Button>
         </DialogActions>
       </Dialog>
-      
+
       <Tabs
         value={tabIndex}
         onChange={(e, v) => setTabIndex(v)}
@@ -449,21 +581,7 @@ export default function InvoicesPage() {
           <Typography variant="h6" gutterBottom>
             Extracted Invoices (For Verification)
           </Typography>
-          {/* <DataGrid
-            
-            sx={{
-            padding: "20px",
-            backgroundColor: "rgba(255, 255, 255, 0.01)", // subtle translucent layer over page bg
-            // borderRadius: "12px",
-            // boxShadow: "0 4px 12px rgba(0,0,0,0.2)",       // soft shadow for depth
-            // backdropFilter: "blur(6px)",                   // glassy effect
-            color: "#fff",                                 // text stays white
-          }}
-            rows={invoiceFile.map((inv, idx) => ({ id: idx + 1, ...inv }))}
-            columns={columns}
-            autoHeight
-          /> */}
-
+          
           <DataGrid
             rows={invoiceFile.map((inv, idx) => ({ id: idx + 1, ...inv }))}
             columns={columns}
@@ -607,19 +725,431 @@ export default function InvoicesPage() {
         {/* tab for ledger */}
        
       {tabIndex === 4 && ( // Detailed ledger
-        <Card
-          sx={{
-            padding: "20px",
-            backgroundColor: "rgba(255, 255, 255, 0.05)",
-            borderRadius: "12px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-            backdropFilter: "blur(6px)",
-            color: "#fff",
-          }}
-        >
+        <Card sx={{ padding: "20px" }}>
           <DetailedLedgerTab ledgerSections={ledgerDetails} />
+          <DataGrid
+            rows={journalEntries.map((entry, idx) => ({
+              id: idx + 1,
+              ...entry,
+            }))}
+            columns={[
+              {
+                field: "date",
+                headerName: "Date",
+                flex: 1,
+                headerClassName: "custom-header",
+              },
+              {
+                field: "account",
+                headerName: "Account",
+                flex: 2,
+                headerClassName: "custom-header",
+              },
+              {
+                field: "debit",
+                headerName: "Debit",
+                flex: 1,
+                headerClassName: "custom-header",
+              },
+              {
+                field: "credit",
+                headerName: "Credit",
+                flex: 1,
+                headerClassName: "custom-header",
+              },
+              {
+                field: "description",
+                headerName: "Description",
+                flex: 3,
+                headerClassName: "custom-header",
+              },
+              {
+                field: "ref",
+                headerName: "Source File",
+                flex: 2,
+                headerClassName: "custom-header",
+              },
+            ]}
+            autoHeight
+            pageSize={5}
+            sx={{
+              backgroundColor: "transparent",
+              color: "#fff",
+
+              // Header row container
+              "& .MuiDataGrid-columnHeaders": {
+                backgroundColor: "rgba(255,255,255,0.08)", // dark overlay instead of white
+              },
+
+              // Header cells
+              "& .MuiDataGrid-columnHeader": {
+                color: "#fff",
+                fontWeight: 700,
+              },
+
+              // Header text span
+              "& .MuiDataGrid-columnHeaderTitle": {
+                color: "#fff",
+              },
+
+              // Body cells
+              "& .MuiDataGrid-cell": {
+                color: "#fff",
+                borderBottom: "1px solid rgba(255,255,255,0.1)",
+              },
+
+              // Row hover
+              "& .MuiDataGrid-row:hover": {
+                backgroundColor: "rgba(255,255,255,0.1)",
+              },
+
+              // Selected row
+              "& .MuiDataGrid-row.Mui-selected": {
+                backgroundColor: "rgba(13,71,161,0.6)",
+                color: "#fff",
+              },
+            }}
+          />
         </Card>
       )}
+
+      {/* TRIAL BALANCE TAB - Tab 5 */}
+      {tabIndex === 5 && (
+        <Box sx={{ width: "100%" }}>
+          {tbLoading ? (
+            // Loading state
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                minHeight: "400px",
+              }}
+            >
+              <CircularProgress color="info" size={60} />
+            </Box>
+          ) : tbError ? (
+            // Error state
+            <Card
+              sx={{
+                padding: "20px",
+                backgroundColor: "rgba(255, 50, 50, 0.1)",
+                borderRadius: "12px",
+              }}
+            >
+              <Typography variant="h6" sx={{ color: "#ff6b6b" }}>
+                ❌ Error
+              </Typography>
+              <Typography variant="body2" sx={{ color: "#fff", mt: 2 }}>
+                {tbError}
+              </Typography>
+              <Button
+                variant="contained"
+                color="error"
+                onClick={fetchTrialBalance}
+                sx={{ mt: 2 }}
+              >
+                Retry
+              </Button>
+            </Card>
+          ) : (
+            // Main content
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {/* Report Section */}
+              <Accordion
+                expanded={reportAccordionExpanded}
+                onChange={(e, isExpanded) =>
+                  setReportAccordionExpanded(isExpanded)
+                }
+                sx={{
+                  backgroundColor: "rgba(255, 255, 255, 0.05)",
+                  borderRadius: "12px",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+                  backdropFilter: "blur(6px)",
+                  color: "#fff",
+                  "&:before": {
+                    display: "none",
+                  },
+                }}
+              >
+                <AccordionSummary
+                  expandIcon={<ExpandMoreIcon />}
+                  sx={{
+                    backgroundColor: "rgba(255, 255, 255, 0.08)",
+                    borderRadius: "12px",
+                    "& .MuiAccordionSummary-content": {
+                      margin: "12px 0",
+                    },
+                  }}
+                >
+                  <Typography
+                    sx={{
+                      color: "#fff",
+                      fontWeight: 700,
+                      fontSize: "1rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    ⚖️ Expert Trial Balance Narrative
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails
+                  sx={{
+                    padding: "30px",
+                    backgroundColor: "transparent",
+                  }}
+                >
+                  <Box sx={{ lineHeight: 1.8, fontSize: "0.95rem" }}>
+                    <MarkdownRenderer
+                      text={
+                        trialBalanceReport?.trim() ||
+                        "No trial balance report is available at this time."
+                      }
+                    />
+                  </Box>
+                </AccordionDetails>
+              </Accordion>
+
+              {/* Alert Box - Human Inspection Required */}
+              <Card
+                sx={{
+                  padding: "20px",
+                  backgroundColor: "#6b7c2f",
+                  borderRadius: "12px",
+                  borderLeft: "4px solid #b3d93c",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                }}
+              >
+                <Box sx={{ display: "flex", alignItems: "flex-start", gap: 2 }}>
+                  <Typography sx={{ fontSize: "1.5rem", mt: 0.5 }}>
+                    ⚠️
+                  </Typography>
+                  <Box>
+                    <Typography
+                      sx={{
+                        color: "#fff",
+                        fontWeight: 700,
+                        fontSize: "1rem",
+                      }}
+                    >
+                      Human Inspection Required
+                    </Typography>
+                    <Typography
+                      sx={{
+                        color: "#f0f0f0",
+                        mt: 1,
+                        fontSize: "0.95rem",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      Please review the Trial Balance and Expert Narrative
+                      above. If the balances are correct and the books are in
+                      parity, click the button below to generate the final
+                      Financial Statements.
+                    </Typography>
+                  </Box>
+                </Box>
+              </Card>
+
+              {/* Confirmation Button */}
+              <Box sx={{ display: "flex", justifyContent: "center" }}>
+                <Button
+                  variant="contained"
+                  size="large"
+                  sx={{
+                    backgroundColor: "#1d4ed8",
+                    color: "#fff",
+                    fontWeight: 700,
+                    padding: "12px 40px",
+                    borderRadius: "8px",
+                    fontSize: "1rem",
+                    "&:hover": {
+                      backgroundColor: "#1e40af",
+                    },
+                  }}
+                  onClick={handleConfirmTrialBalance}
+                  disabled={tbConfirmed}
+                >
+                  {tbConfirmed
+                    ? "✓ Confirmed"
+                    : "✓ Confirm Trial Balance & Generate Statements"}
+                </Button>
+              </Box>
+
+              {/* Trial Balance Table Section */}
+              <Card
+                sx={{
+                  padding: "30px",
+                  backgroundColor: "rgba(255, 255, 255, 0.05)",
+                  borderRadius: "12px",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+                  backdropFilter: "blur(6px)",
+                  color: "#fff",
+                }}
+              >
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: "#fff",
+                    fontWeight: 700,
+                    mb: 3,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
+                >
+                  📊 Standard Trial Balance
+                </Typography>
+
+                <DataGrid
+                  rows={[
+                    ...trialBalanceData.map((account, idx) => ({
+                      id: idx + 1,
+                      account_name: account.account_name || "",
+                      debit: account.debit || 0,
+                      credit: account.credit || 0,
+                      net_balance: account.net_balance || 0,
+                    })),
+                    {
+                      id: trialBalanceData.length + 1,
+                      account_name: "TOTAL",
+                      debit: tbTotalDebits,
+                      credit: tbTotalCredits,
+                      net_balance: tbTotalDebits - tbTotalCredits,
+                      isTotal: true,
+                    },
+                  ]}
+                  columns={[
+                    {
+                      field: "account_name",
+                      headerName: "Account Name",
+                      flex: 2,
+                      headerClassName: "custom-header",
+                      renderCell: (params) => (
+                        <span
+                          style={{ fontWeight: params.row.isTotal ? 700 : 400 }}
+                        >
+                          {params.value}
+                        </span>
+                      ),
+                    },
+                    {
+                      field: "debit",
+                      headerName: "Debit (₦)",
+                      flex: 1,
+                      headerClassName: "custom-header",
+                      renderCell: (params) => (
+                        <span
+                          style={{ fontWeight: params.row.isTotal ? 700 : 400 }}
+                        >
+                          {formatCurrency(params.value)}
+                        </span>
+                      ),
+                    },
+                    {
+                      field: "credit",
+                      headerName: "Credit (₦)",
+                      flex: 1,
+                      headerClassName: "custom-header",
+                      renderCell: (params) => (
+                        <span
+                          style={{ fontWeight: params.row.isTotal ? 700 : 400 }}
+                        >
+                          {formatCurrency(params.value)}
+                        </span>
+                      ),
+                    },
+                    {
+                      field: "net_balance",
+                      headerName: "Net Balance (₦)",
+                      flex: 1,
+                      headerClassName: "custom-header",
+                      renderCell: (params) => (
+                        <span
+                          style={{ fontWeight: params.row.isTotal ? 700 : 400 }}
+                        >
+                          {formatCurrency(params.value)}
+                        </span>
+                      ),
+                    },
+                  ]}
+                  autoHeight
+                  hideFooter
+                  sx={{
+                    backgroundColor: "transparent",
+                    color: "#fff",
+                    "& .MuiDataGrid-columnHeaders": {
+                      backgroundColor: "rgba(255,255,255,0.08)",
+                    },
+                    "& .MuiDataGrid-columnHeader": {
+                      color: "#fff",
+                      fontWeight: 700,
+                    },
+                    "& .MuiDataGrid-cell": {
+                      color: "#fff",
+                      borderBottom: "1px solid rgba(255,255,255,0.1)",
+                    },
+                    "& .MuiDataGrid-row:hover": {
+                      backgroundColor: "rgba(255,255,255,0.1)",
+                    },
+                  }}
+                />
+
+                {/* Balance Status */}
+                <Box
+                  sx={{
+                    mt: 3,
+                    pt: 3,
+                    borderTop: "1px solid rgba(255,255,255,0.2)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: "#aaa", fontSize: "0.9rem" }}>
+                      Balance Status:
+                    </Typography>
+                    <Typography
+                      sx={{
+                        fontWeight: 700,
+                        fontSize: "1.1rem",
+                        color:
+                          Math.abs(tbTotalDebits - tbTotalCredits) < 0.01
+                            ? "#4ade80"
+                            : "#ff6b6b",
+                        mt: 0.5,
+                      }}
+                    >
+                      {Math.abs(tbTotalDebits - tbTotalCredits) < 0.01
+                        ? "✓ BALANCED"
+                        : "⚠️ NOT BALANCED"}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ textAlign: "right" }}>
+                    <Typography sx={{ color: "#aaa", fontSize: "0.9rem" }}>
+                      Difference:
+                    </Typography>
+                    <Typography
+                      sx={{
+                        fontWeight: 700,
+                        fontSize: "1.1rem",
+                        color: "#fff",
+                        mt: 0.5,
+                      }}
+                    >
+                      {formatCurrency(tbTotalDebits - tbTotalCredits)}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Card>
+            </Box>
+          )}
+        </Box>
+      )}
+
       {reconciling && (
         <Box
           sx={{
@@ -636,7 +1166,6 @@ export default function InvoicesPage() {
             zIndex: 1300,
           }}
         >
-
           <Card sx={{ padding: "30px", borderRadius: "12px", textAlign: "center", minWidth: "300px" }}>
             {reconcileStep < 3 ? (
               <>
@@ -1151,3 +1680,6 @@ export default function InvoicesPage() {
 
   )
 }
+
+
+
