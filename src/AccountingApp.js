@@ -327,7 +327,7 @@ function AccountingApp() {
             </svg>
           </div>
           <div class="brand-text">
-            <b>AI Bookkeeper</b>
+            <b>AI-Powered Accountant</b>
             <span>by Snapnet</span>
           </div>
         </div>
@@ -423,7 +423,7 @@ function AccountingApp() {
         <Grid size={12}>
           <section className="card">
             <div className="card-inner intro-inner">
-              <span className="badge">● AI-powered bookkeeping</span>
+              <span className="badge">● AI-powered Accountant</span>
               <h1 className="h-hero">
                 Turn raw documents into{" "}
                 <span className="grad">audit-ready books</span>.

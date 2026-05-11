@@ -171,7 +171,7 @@ export default function InvoicesPage() {
           const lDetails = stateData.financial_statements.ledger_details;
           const formattedObject = {
             cash_bank: lDetails["Cash/Bank"],
-            revenue: lDetails["Revenue (Unmatched Payments)"],
+            revenue: lDetails["Revenue (Unmatched Payments)"] || lDetails["Revenue (Unmatched Deposits)"],
             service_revenue: lDetails["Service Revenue"],
           };
 
@@ -244,7 +244,7 @@ export default function InvoicesPage() {
       ),
     },
   ];
-
+  // console.log(ledgerDetails)
   const handleBack = () => {
     navigate("/");
   };
@@ -343,6 +343,8 @@ export default function InvoicesPage() {
 
       setTbConfirmed(true);
       alert("✓ Trial Balance Confirmed! Generating Financial Statements...");
+      console.log("Trial balance confirmed,generating profit and loss statement:", response.json())
+      // console.log("Updated state:", data)
     } catch (error) {
       console.error("Error confirming trial balance:", error);
       alert("Error confirming trial balance. Please try again.");
@@ -410,7 +412,7 @@ const MarkdownRenderer = ({ text }) => (
             </svg>
           </div>
           <div class="brand-text">
-            <b>AI Bookkeeper</b>
+            <b>AI Accountant</b>
             <span>by Snapnet</span>
           </div>
         </div>
@@ -725,91 +727,18 @@ const MarkdownRenderer = ({ text }) => (
         {/* tab for ledger */}
        
       {tabIndex === 4 && ( // Detailed ledger
-        <Card sx={{ padding: "20px" }}>
+        <Card 
+          sx={{
+                padding: "20px",
+                backgroundColor: "rgba(255, 255, 255, 0.05)", 
+                borderRadius: "12px",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+                backdropFilter: "blur(6px)",
+                color: "#fff",
+              }}
+          >    
           <DetailedLedgerTab ledgerSections={ledgerDetails} />
-          <DataGrid
-            rows={journalEntries.map((entry, idx) => ({
-              id: idx + 1,
-              ...entry,
-            }))}
-            columns={[
-              {
-                field: "date",
-                headerName: "Date",
-                flex: 1,
-                headerClassName: "custom-header",
-              },
-              {
-                field: "account",
-                headerName: "Account",
-                flex: 2,
-                headerClassName: "custom-header",
-              },
-              {
-                field: "debit",
-                headerName: "Debit",
-                flex: 1,
-                headerClassName: "custom-header",
-              },
-              {
-                field: "credit",
-                headerName: "Credit",
-                flex: 1,
-                headerClassName: "custom-header",
-              },
-              {
-                field: "description",
-                headerName: "Description",
-                flex: 3,
-                headerClassName: "custom-header",
-              },
-              {
-                field: "ref",
-                headerName: "Source File",
-                flex: 2,
-                headerClassName: "custom-header",
-              },
-            ]}
-            autoHeight
-            pageSize={5}
-            sx={{
-              backgroundColor: "transparent",
-              color: "#fff",
-
-              // Header row container
-              "& .MuiDataGrid-columnHeaders": {
-                backgroundColor: "rgba(255,255,255,0.08)", // dark overlay instead of white
-              },
-
-              // Header cells
-              "& .MuiDataGrid-columnHeader": {
-                color: "#fff",
-                fontWeight: 700,
-              },
-
-              // Header text span
-              "& .MuiDataGrid-columnHeaderTitle": {
-                color: "#fff",
-              },
-
-              // Body cells
-              "& .MuiDataGrid-cell": {
-                color: "#fff",
-                borderBottom: "1px solid rgba(255,255,255,0.1)",
-              },
-
-              // Row hover
-              "& .MuiDataGrid-row:hover": {
-                backgroundColor: "rgba(255,255,255,0.1)",
-              },
-
-              // Selected row
-              "& .MuiDataGrid-row.Mui-selected": {
-                backgroundColor: "rgba(13,71,161,0.6)",
-                color: "#fff",
-              },
-            }}
-          />
+          
         </Card>
       )}
 
@@ -951,7 +880,7 @@ const MarkdownRenderer = ({ text }) => (
                     </Typography>
                   </Box>
                 </Box>
-              </Card>
+              </Card> 
 
               {/* Confirmation Button */}
               <Box sx={{ display: "flex", justifyContent: "center" }}>
@@ -1179,7 +1108,7 @@ const MarkdownRenderer = ({ text }) => (
             ) : (
               <>
                 <Typography variant="h6" sx={{ marginBottom: 2 }}>
-                  ✅ Reconciliation complete! Please check required tabs for records.
+                  ✅ Reconciliation complete! Please check the required tabs for records.
                 </Typography>
                 <Button
                   variant="contained"
@@ -1353,13 +1282,13 @@ const MarkdownRenderer = ({ text }) => (
                     >
                       Run New Model
                     </Button>
-                    <Button
+                    {/* <Button
                       variant="outlined"
                       sx={{ mr: 2 }}
                       onClick={() => window.print()}
                     >
                       Print Report
-                    </Button>
+                    </Button> */}
                     <Button
                       variant="contained"
                       color="info"

@@ -799,7 +799,8 @@ body::before {
   padding: 14px;
   font-size: 11px;
   box-shadow: 0 14px 40px -10px rgba(0, 0, 0, 0.5);
-  transform: rotate(-1.5deg);
+  /* transform: rotate(-1.5deg); */
+  
 }
 .doc h5 {
   margin: 0 0 8px;
