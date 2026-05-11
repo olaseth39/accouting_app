@@ -30,7 +30,6 @@ import {
   AccordionDetails,
 } from "@mui/material";
 
-
 // import { BarChart, Bar } from "recharts";
 import { DataGrid } from "@mui/x-data-grid";
 import { DataContext, DataProvider } from "./DataContext";
@@ -46,11 +45,10 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-
 const DetailedLedgerTab = lazy(
   () => import("./analysis/detailedLedger/DetailedLedgerTab"),
 );
-  
+
 export default function InvoicesPage() {
   const {
     invoiceFile,
@@ -89,10 +87,10 @@ export default function InvoicesPage() {
   const [openEmailModal, setOpenEmailModal] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState("");
 
-//   When the user clicks "Approve All Invoices", we want to:
-// 1. Update the local state to mark all invoices as approved (this gives instant feedback in the UI).
-// 2. Send a request to the backend to trigger the reconciliation process immediately with all invoices marked as approved.
-// 3. Optionally, we can show a loading state while waiting for the backend to process and return the updated journal entries.
+  //   When the user clicks "Approve All Invoices", we want to:
+  // 1. Update the local state to mark all invoices as approved (this gives instant feedback in the UI).
+  // 2. Send a request to the backend to trigger the reconciliation process immediately with all invoices marked as approved.
+  // 3. Optionally, we can show a loading state while waiting for the backend to process and return the updated journal entries.
   // Trial Balance Tab State
   const [trialBalanceReport, setTrialBalanceReport] = useState("");
   const [trialBalanceData, setTrialBalanceData] = useState([]);
@@ -101,7 +99,49 @@ export default function InvoicesPage() {
   const [tbLoading, setTbLoading] = useState(false);
   const [tbConfirmed, setTbConfirmed] = useState(false);
   const [tbError, setTbError] = useState("");
-  const [reportAccordionExpanded, setReportAccordionExpanded] = useState(true);
+  const [tbGenerating, setTbGenerating] = useState(false);
+  const [reportAccordionExpanded, setReportAccordionExpanded] = useState(false);
+  const [profitLossData, setProfitLossData] = useState([]);
+  const [plLoading, setPlLoading] = useState(false);
+  const [plError, setPlError] = useState("");
+  const [balanceSheetData, setBalanceSheetData] = useState([]);
+  const [bsLoading, setBsLoading] = useState(false);
+  const [bsError, setBsError] = useState("");
+
+  const normalizeStatementData = (statement) => {
+    if (!statement) return [];
+    if (Array.isArray(statement)) {
+      return statement.map((row, idx) => ({ id: row.id ?? idx + 1, ...row }));
+    }
+    if (typeof statement === "object") {
+      if (Array.isArray(statement.rows)) {
+        return statement.rows.map((row, idx) => ({
+          id: row.id ?? idx + 1,
+          ...row,
+        }));
+      }
+      if (Array.isArray(statement.entries)) {
+        return statement.entries.map((row, idx) => ({
+          id: row.id ?? idx + 1,
+          ...row,
+        }));
+      }
+      return Object.entries(statement).map(([key, value], idx) => ({
+        id: idx + 1,
+        account_name: key,
+        amount: value,
+      }));
+    }
+    return [];
+  };
+
+  const formatCellValue = (value) => {
+    if (value === null || value === undefined) return "-";
+    if (typeof value === "number") return formatCurrency(value);
+    const numericValue = Number(String(value).replace(/[, ]+/g, ""));
+    if (!Number.isNaN(numericValue)) return formatCurrency(numericValue);
+    return String(value);
+  };
 
   //   When the user clicks "Approve All Invoices", we want to:
   // 1. Update the local state to mark all invoices as approved (this gives instant feedback in the UI).
@@ -171,7 +211,9 @@ export default function InvoicesPage() {
           const lDetails = stateData.financial_statements.ledger_details;
           const formattedObject = {
             cash_bank: lDetails["Cash/Bank"],
-            revenue: lDetails["Revenue (Unmatched Payments)"] || lDetails["Revenue (Unmatched Deposits)"],
+            revenue:
+              lDetails["Revenue (Unmatched Payments)"] ||
+              lDetails["Revenue (Unmatched Deposits)"],
             service_revenue: lDetails["Service Revenue"],
           };
 
@@ -275,7 +317,6 @@ export default function InvoicesPage() {
     setOpenDeleteConfirm(true);
   };
 
-
   // Helper function to format currency with ₦ symbol
   const formatCurrency = (amount) => {
     if (amount === null || amount === undefined) return "₦0.00";
@@ -288,6 +329,10 @@ export default function InvoicesPage() {
 
     setTbLoading(true);
     setTbError("");
+    setPlLoading(true);
+    setPlError("");
+    setBsLoading(true);
+    setBsError("");
 
     try {
       const response = await fetch(
@@ -298,27 +343,33 @@ export default function InvoicesPage() {
       const data = await response.json();
       console.log("Full state received:", data);
 
-      // Extract trial balance report from elaborate_narratives
       const report =
         data?.elaborate_narratives?.trial_balance_report ||
         "No report available";
       setTrialBalanceReport(report);
 
-      // Extract trial balance data from financial_statements
       const trialBalanceObj = data?.financial_statements?.trial_balance || {};
-
-      // Extract accounts array
       const accounts = trialBalanceObj.accounts || [];
       setTrialBalanceData(accounts);
-
-      // Extract totals
       setTbTotalDebits(trialBalanceObj.total_debits || 0);
       setTbTotalCredits(trialBalanceObj.total_credits || 0);
+
+      const profitLossObj = data?.financial_statements?.profit_and_loss || {};
+      setProfitLossData(normalizeStatementData(profitLossObj));
+
+      const balanceSheetObj = data?.financial_statements?.balance_sheet || {};
+      setBalanceSheetData(normalizeStatementData(balanceSheetObj));
     } catch (error) {
       console.error("Error fetching trial balance:", error);
       setTbError("Failed to load trial balance data. Please try again.");
+      setPlError("Failed to load profit & loss data. Please try again.");
+      setBsError("Failed to load balance sheet data. Please try again.");
+      setProfitLossData([]);
+      setBalanceSheetData([]);
     } finally {
       setTbLoading(false);
+      setPlLoading(false);
+      setBsLoading(false);
     }
   }, [threadId]);
 
@@ -333,67 +384,77 @@ export default function InvoicesPage() {
   const handleConfirmTrialBalance = async () => {
     if (!threadId) return;
 
+    setTbGenerating(true);
     try {
       const response = await fetch(
         `http://127.0.0.1:8002/agent/session/${threadId}/confirm-trial-balance`,
-        { method: "POST", headers: { "Content-Type": "application/json" } },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        },
       );
 
       if (!response.ok) throw new Error("Confirmation failed");
 
+      const responseData = await response.json().catch(() => null);
       setTbConfirmed(true);
+      setReportAccordionExpanded(false);
       alert("✓ Trial Balance Confirmed! Generating Financial Statements...");
-      console.log("Trial balance confirmed,generating profit and loss statement:", response.json())
-      // console.log("Updated state:", data)
+      console.log(
+        "Trial balance confirmed, generating profit and loss statement:",
+        responseData,
+      );
+      await fetchTrialBalance();
     } catch (error) {
       console.error("Error confirming trial balance:", error);
       alert("Error confirming trial balance. Please try again.");
+    } finally {
+      setTbGenerating(false);
     }
   };
 
-const MarkdownRenderer = ({ text }) => (
-  <ReactMarkdown
-    remarkPlugins={[remarkGfm]}
-    components={{
-      h3: ({ node, ...props }) => (
-        <Typography
-          variant="h6"
-          sx={{ color: "#fff", mt: 3, mb: 1 }}
-          {...props}
-        />
-      ),
-      h4: ({ node, ...props }) => (
-        <Typography
-          variant="subtitle1"
-          sx={{ color: "#fff", mt: 2, mb: 1 }}
-          {...props}
-        />
-      ),
-      p: ({ node, ...props }) => (
-        <Typography
-          sx={{ color: "#ddd", mb: 1.2, fontSize: "0.95rem" }}
-          {...props}
-        />
-      ),
-      li: ({ node, ...props }) => (
-        <Typography
-          component="li"
-          sx={{ color: "#ddd", ml: 3, mb: 0.5 }}
-          {...props}
-        />
-      ),
-      ul: ({ node, ...props }) => (
-        <Box component="ul" sx={{ pl: 2, mb: 1.5 }} {...props} />
-      ),
-    }}
-  >
-    {text}
-  </ReactMarkdown>
-);
+  const MarkdownRenderer = ({ text }) => (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        h3: ({ node, ...props }) => (
+          <Typography
+            variant="h6"
+            sx={{ color: "#fff", mt: 3, mb: 1 }}
+            {...props}
+          />
+        ),
+        h4: ({ node, ...props }) => (
+          <Typography
+            variant="subtitle1"
+            sx={{ color: "#fff", mt: 2, mb: 1 }}
+            {...props}
+          />
+        ),
+        p: ({ node, ...props }) => (
+          <Typography
+            sx={{ color: "#ddd", mb: 1.2, fontSize: "0.95rem" }}
+            {...props}
+          />
+        ),
+        li: ({ node, ...props }) => (
+          <Typography
+            component="li"
+            sx={{ color: "#ddd", ml: 3, mb: 0.5 }}
+            {...props}
+          />
+        ),
+        ul: ({ node, ...props }) => (
+          <Box component="ul" sx={{ pl: 2, mb: 1.5 }} {...props} />
+        ),
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  );
 
   return (
     <Box sx={{ width: "100%" }}>
-      
       <header class="nav">
         <div class="brand">
           <div class="logo">
@@ -432,14 +493,14 @@ const MarkdownRenderer = ({ text }) => (
           alignItems: "center",
           padding: "20px",
         }}
+      >
+        <Typography
+          variant="h4"
+          gutterBottom
+          sx={{ fontWeight: "700", color: "#dde1eb" }}
         >
-          <Typography
-            variant="h4"
-            gutterBottom
-            sx={{ fontWeight: "700", color: "#dde1eb" }}
-          >
-            Reconciliation & Analysis
-          </Typography>
+          Reconciliation & Analysis
+        </Typography>
 
         <Box sx={{ display: "flex", gap: "10px" }}>
           {/* Back Button */}
@@ -459,27 +520,28 @@ const MarkdownRenderer = ({ text }) => (
           {/* ✅ Only show these when tabIndex === 0 */}
           {tabIndex === 0 && (
             <>
-                {/* Clear Data Button */}
-                <Button
-                  variant="contained"
-                  color="error"
-                  onClick={() => setOpenConfirm(true)}
-                  sx={{ borderRadius: "8px", fontWeight: "600" }}
-                >
-                  🗑 Clear Data
-                </Button>
-                {/* Approval button */}
-                <Button
-                  variant="contained"
-                  color={allApproved ? "warning" : "success"}
-                  onClick={handleToggleApprove}
-                  sx={{ borderRadius: "8px", fontWeight: "600" }}
-                >
-
-                  {allApproved ? "❌ Unapprove All Invoices" : "✅ Approve All Invoices"}
+              {/* Clear Data Button */}
+              <Button
+                variant="contained"
+                color="error"
+                onClick={() => setOpenConfirm(true)}
+                sx={{ borderRadius: "8px", fontWeight: "600" }}
+              >
+                🗑 Clear Data
               </Button>
-            </> 
-          )}           
+              {/* Approval button */}
+              <Button
+                variant="contained"
+                color={allApproved ? "warning" : "success"}
+                onClick={handleToggleApprove}
+                sx={{ borderRadius: "8px", fontWeight: "600" }}
+              >
+                {allApproved
+                  ? "❌ Unapprove All Invoices"
+                  : "✅ Approve All Invoices"}
+              </Button>
+            </>
+          )}
         </Box>
       </Box>
 
@@ -583,7 +645,7 @@ const MarkdownRenderer = ({ text }) => (
           <Typography variant="h6" gutterBottom>
             Extracted Invoices (For Verification)
           </Typography>
-          
+
           <DataGrid
             rows={invoiceFile.map((inv, idx) => ({ id: idx + 1, ...inv }))}
             columns={columns}
@@ -656,89 +718,121 @@ const MarkdownRenderer = ({ text }) => (
         </Card>
       )}
 
-       {tabIndex === 3 && ( // Journal Entries tab
-          <Card
-            sx={{
-              padding: "20px",
-              backgroundColor: "rgba(255, 255, 255, 0.05)", 
-              borderRadius: "12px",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-              backdropFilter: "blur(6px)",
-              color: "#fff",
-            }}
-          >
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-              Journal Entries (Reconciled Records)
-            </Typography>
-
-            <DataGrid
-              rows={journalEntries.map((entry, idx) => ({ id: idx + 1, ...entry }))}
-              columns={[
-                { field: "date", headerName: "Date", flex: 1, headerClassName: "custom-header" },
-                { field: "account", headerName: "Account", flex: 2, headerClassName: "custom-header" },
-                { field: "debit", headerName: "Debit", flex: 1, headerClassName: "custom-header" },
-                { field: "credit", headerName: "Credit", flex: 1, headerClassName: "custom-header" },
-                { field: "description", headerName: "Description", flex: 3, headerClassName: "custom-header" },
-                { field: "ref", headerName: "Source File", flex: 2, headerClassName: "custom-header" }
-              ]}
-              autoHeight
-              pageSize={5}
-              sx={{
-                backgroundColor: "transparent",
-                color: "#fff",
-
-                // Header row container
-                "& .MuiDataGrid-columnHeaders": {
-                  backgroundColor: "rgba(255,255,255,0.08)", // dark overlay instead of white
-                },
-
-                // Header cells
-                "& .MuiDataGrid-columnHeader": {
-                  color: "#fff",
-                  fontWeight: 700,
-                },
-
-                // Header text span
-                "& .MuiDataGrid-columnHeaderTitle": {
-                  color: "#fff",
-                },
-
-                // Body cells
-                "& .MuiDataGrid-cell": {
-                  color: "#fff",
-                  borderBottom: "1px solid rgba(255,255,255,0.1)",
-                },
-
-                // Row hover
-                "& .MuiDataGrid-row:hover": {
-                  backgroundColor: "rgba(255,255,255,0.1)",
-                },
-
-                // Selected row
-                "& .MuiDataGrid-row.Mui-selected": {
-                  backgroundColor: "rgba(13,71,161,0.6)",
-                  color: "#fff",
-                },
-              }}
-            />
-          </Card>
-        )}
-
-        {/* tab for ledger */}
-       
-      {tabIndex === 4 && ( // Detailed ledger
-        <Card 
+      {tabIndex === 3 && ( // Journal Entries tab
+        <Card
           sx={{
-                padding: "20px",
-                backgroundColor: "rgba(255, 255, 255, 0.05)", 
-                borderRadius: "12px",
-                boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-                backdropFilter: "blur(6px)",
+            padding: "20px",
+            backgroundColor: "rgba(255, 255, 255, 0.05)",
+            borderRadius: "12px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+            backdropFilter: "blur(6px)",
+            color: "#fff",
+          }}
+        >
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+            Journal Entries (Reconciled Records)
+          </Typography>
+
+          <DataGrid
+            rows={journalEntries.map((entry, idx) => ({
+              id: idx + 1,
+              ...entry,
+            }))}
+            columns={[
+              {
+                field: "date",
+                headerName: "Date",
+                flex: 1,
+                headerClassName: "custom-header",
+              },
+              {
+                field: "account",
+                headerName: "Account",
+                flex: 2,
+                headerClassName: "custom-header",
+              },
+              {
+                field: "debit",
+                headerName: "Debit",
+                flex: 1,
+                headerClassName: "custom-header",
+              },
+              {
+                field: "credit",
+                headerName: "Credit",
+                flex: 1,
+                headerClassName: "custom-header",
+              },
+              {
+                field: "description",
+                headerName: "Description",
+                flex: 3,
+                headerClassName: "custom-header",
+              },
+              {
+                field: "ref",
+                headerName: "Source File",
+                flex: 2,
+                headerClassName: "custom-header",
+              },
+            ]}
+            autoHeight
+            pageSize={5}
+            sx={{
+              backgroundColor: "transparent",
+              color: "#fff",
+
+              // Header row container
+              "& .MuiDataGrid-columnHeaders": {
+                backgroundColor: "rgba(255,255,255,0.08)", // dark overlay instead of white
+              },
+
+              // Header cells
+              "& .MuiDataGrid-columnHeader": {
                 color: "#fff",
-              }}
-          >    
+                fontWeight: 700,
+              },
+
+              // Header text span
+              "& .MuiDataGrid-columnHeaderTitle": {
+                color: "#fff",
+              },
+
+              // Body cells
+              "& .MuiDataGrid-cell": {
+                color: "#fff",
+                borderBottom: "1px solid rgba(255,255,255,0.1)",
+              },
+
+              // Row hover
+              "& .MuiDataGrid-row:hover": {
+                backgroundColor: "rgba(255,255,255,0.1)",
+              },
+
+              // Selected row
+              "& .MuiDataGrid-row.Mui-selected": {
+                backgroundColor: "rgba(13,71,161,0.6)",
+                color: "#fff",
+              },
+            }}
+          />
+        </Card>
+      )}
+
+      {/* tab for ledger */}
+
+      {tabIndex === 4 && ( // Detailed ledger
+        <Card
+          sx={{
+            padding: "20px",
+            backgroundColor: "rgba(255, 255, 255, 0.05)",
+            borderRadius: "12px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+            backdropFilter: "blur(6px)",
+            color: "#fff",
+          }}
+        >
           <DetailedLedgerTab ledgerSections={ledgerDetails} />
-          
         </Card>
       )}
 
@@ -841,71 +935,112 @@ const MarkdownRenderer = ({ text }) => (
                 </AccordionDetails>
               </Accordion>
 
-              {/* Alert Box - Human Inspection Required */}
-              <Card
-                sx={{
-                  padding: "20px",
-                  backgroundColor: "#6b7c2f",
-                  borderRadius: "12px",
-                  borderLeft: "4px solid #b3d93c",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                }}
-              >
-                <Box sx={{ display: "flex", alignItems: "flex-start", gap: 2 }}>
-                  <Typography sx={{ fontSize: "1.5rem", mt: 0.5 }}>
-                    ⚠️
-                  </Typography>
-                  <Box>
-                    <Typography
-                      sx={{
-                        color: "#fff",
-                        fontWeight: 700,
-                        fontSize: "1rem",
-                      }}
+              {!tbConfirmed && (
+                <>
+                  {/* Alert Box - Human Inspection Required */}
+                  <Card
+                    sx={{
+                      padding: "20px",
+                      backgroundColor: "#6b7c2f",
+                      borderRadius: "12px",
+                      borderLeft: "4px solid #b3d93c",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                    }}
+                  >
+                    <Box
+                      sx={{ display: "flex", alignItems: "flex-start", gap: 2 }}
                     >
-                      Human Inspection Required
-                    </Typography>
-                    <Typography
-                      sx={{
-                        color: "#f0f0f0",
-                        mt: 1,
-                        fontSize: "0.95rem",
-                        lineHeight: 1.6,
-                      }}
-                    >
-                      Please review the Trial Balance and Expert Narrative
-                      above. If the balances are correct and the books are in
-                      parity, click the button below to generate the final
-                      Financial Statements.
-                    </Typography>
-                  </Box>
-                </Box>
-              </Card> 
+                      <Typography sx={{ fontSize: "1.5rem", mt: 0.5 }}>
+                        ⚠️
+                      </Typography>
+                      <Box>
+                        <Typography
+                          sx={{
+                            color: "#fff",
+                            fontWeight: 700,
+                            fontSize: "1rem",
+                          }}
+                        >
+                          Human Inspection Required
+                        </Typography>
+                        <Typography
+                          sx={{
+                            color: "#f0f0f0",
+                            mt: 1,
+                            fontSize: "0.95rem",
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          Please review the Trial Balance and Expert Narrative
+                          above. If the balances are correct and the books are
+                          in parity, click the button below to generate the
+                          final Financial Statements.
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Card>
 
-              {/* Confirmation Button */}
-              <Box sx={{ display: "flex", justifyContent: "center" }}>
-                <Button
-                  variant="contained"
-                  size="large"
-                  sx={{
-                    backgroundColor: "#1d4ed8",
-                    color: "#fff",
-                    fontWeight: 700,
-                    padding: "12px 40px",
-                    borderRadius: "8px",
-                    fontSize: "1rem",
-                    "&:hover": {
-                      backgroundColor: "#1e40af",
-                    },
-                  }}
-                  onClick={handleConfirmTrialBalance}
-                  disabled={tbConfirmed}
-                >
-                  {tbConfirmed
-                    ? "✓ Confirmed"
-                    : "✓ Confirm Trial Balance & Generate Statements"}
-                </Button>
-              </Box>
+                  {/* Confirmation Button */}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 2,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "center",
+                        width: "100%",
+                      }}
+                    >
+                      <Button
+                        variant="contained"
+                        size="large"
+                        sx={{
+                          backgroundColor: "#1d4ed8",
+                          color: "#fff",
+                          fontWeight: 700,
+                          padding: "12px 40px",
+                          borderRadius: "8px",
+                          fontSize: "1rem",
+                          "&:hover": {
+                            backgroundColor: "#1e40af",
+                          },
+                        }}
+                        onClick={handleConfirmTrialBalance}
+                        disabled={tbGenerating}
+                      >
+                        {tbGenerating
+                          ? "Generating Statements..."
+                          : "✓ Confirm Trial Balance & Generate Statements"}
+                      </Button>
+                    </Box>
+                    {tbGenerating && (
+                      <Card
+                        sx={{
+                          padding: "16px 20px",
+                          backgroundColor: "rgba(255, 255, 255, 0.08)",
+                          borderRadius: "12px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 2,
+                          width: "100%",
+                          maxWidth: "600px",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <CircularProgress color="info" size={28} />
+                        <Typography sx={{ color: "#fff", fontWeight: 600 }}>
+                          Generating financial statements. Please wait...
+                        </Typography>
+                      </Card>
+                    )}
+                  </Box>
+                </>
+              )}
 
               {/* Trial Balance Table Section */}
               <Card
@@ -1074,6 +1209,196 @@ const MarkdownRenderer = ({ text }) => (
                   </Box>
                 </Box>
               </Card>
+
+              <Card
+                sx={{
+                  padding: "30px",
+                  backgroundColor: "rgba(255, 255, 255, 0.05)",
+                  borderRadius: "12px",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+                  backdropFilter: "blur(6px)",
+                  color: "#fff",
+                }}
+              >
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: "#fff",
+                    fontWeight: 700,
+                    mb: 3,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
+                >
+                  📈 Profit & Loss Statement
+                </Typography>
+
+                {plLoading ? (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      minHeight: "200px",
+                    }}
+                  >
+                    <CircularProgress color="info" size={50} />
+                  </Box>
+                ) : plError ? (
+                  <Card
+                    sx={{
+                      padding: "20px",
+                      backgroundColor: "rgba(255, 50, 50, 0.1)",
+                      borderRadius: "12px",
+                    }}
+                  >
+                    <Typography variant="h6" sx={{ color: "#ff6b6b" }}>
+                      ❌ Error
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "#fff", mt: 2 }}>
+                      {plError}
+                    </Typography>
+                  </Card>
+                ) : profitLossData.length === 0 ? (
+                  <Typography sx={{ color: "#aaa" }}>
+                    No Profit & Loss data is available yet. Confirm the trial
+                    balance to generate the statement.
+                  </Typography>
+                ) : (
+                  <Table sx={{ backgroundColor: "transparent" }}>
+                    <TableHead>
+                      <TableRow>
+                        {Object.keys(profitLossData[0])
+                          .filter((key) => key !== "id")
+                          .map((col) => (
+                            <TableCell
+                              key={col}
+                              align="center"
+                              sx={{ color: "#fff", fontWeight: 700 }}
+                            >
+                              {col
+                                .replace(/_/g, " ")
+                                .replace(/\b\w/g, (c) => c.toUpperCase())}
+                            </TableCell>
+                          ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {profitLossData.map((row) => (
+                        <TableRow key={row.id}>
+                          {Object.keys(row)
+                            .filter((key) => key !== "id")
+                            .map((col) => (
+                              <TableCell
+                                key={col}
+                                align="center"
+                                sx={{ color: "#fff" }}
+                              >
+                                {formatCellValue(row[col])}
+                              </TableCell>
+                            ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </Card>
+
+              <Card
+                sx={{
+                  padding: "30px",
+                  backgroundColor: "rgba(255, 255, 255, 0.05)",
+                  borderRadius: "12px",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+                  backdropFilter: "blur(6px)",
+                  color: "#fff",
+                }}
+              >
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: "#fff",
+                    fontWeight: 700,
+                    mb: 3,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
+                >
+                  🧾 Balance Sheet
+                </Typography>
+
+                {bsLoading ? (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      minHeight: "200px",
+                    }}
+                  >
+                    <CircularProgress color="info" size={50} />
+                  </Box>
+                ) : bsError ? (
+                  <Card
+                    sx={{
+                      padding: "20px",
+                      backgroundColor: "rgba(255, 50, 50, 0.1)",
+                      borderRadius: "12px",
+                    }}
+                  >
+                    <Typography variant="h6" sx={{ color: "#ff6b6b" }}>
+                      ❌ Error
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "#fff", mt: 2 }}>
+                      {bsError}
+                    </Typography>
+                  </Card>
+                ) : balanceSheetData.length === 0 ? (
+                  <Typography sx={{ color: "#aaa" }}>
+                    No Balance Sheet data is available yet. Confirm the trial
+                    balance to generate the statement.
+                  </Typography>
+                ) : (
+                  <Table sx={{ backgroundColor: "transparent" }}>
+                    <TableHead>
+                      <TableRow>
+                        {Object.keys(balanceSheetData[0])
+                          .filter((key) => key !== "id")
+                          .map((col) => (
+                            <TableCell
+                              key={col}
+                              align="center"
+                              sx={{ color: "#fff", fontWeight: 700 }}
+                            >
+                              {col
+                                .replace(/_/g, " ")
+                                .replace(/\b\w/g, (c) => c.toUpperCase())}
+                            </TableCell>
+                          ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {balanceSheetData.map((row) => (
+                        <TableRow key={row.id}>
+                          {Object.keys(row)
+                            .filter((key) => key !== "id")
+                            .map((col) => (
+                              <TableCell
+                                key={col}
+                                align="center"
+                                sx={{ color: "#fff" }}
+                              >
+                                {formatCellValue(row[col])}
+                              </TableCell>
+                            ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </Card>
             </Box>
           )}
         </Box>
@@ -1095,27 +1420,36 @@ const MarkdownRenderer = ({ text }) => (
             zIndex: 1300,
           }}
         >
-          <Card sx={{ padding: "30px", borderRadius: "12px", textAlign: "center", minWidth: "300px" }}>
+          <Card
+            sx={{
+              padding: "30px",
+              borderRadius: "12px",
+              textAlign: "center",
+              minWidth: "300px",
+            }}
+          >
             {reconcileStep < 3 ? (
               <>
                 <CircularProgress color="primary" />
                 <Typography variant="h6" sx={{ marginTop: 2 }}>
                   {reconcileStep === 1 && "🔄 Starting reconciliation…"}
-                  {reconcileStep === 2 && "📑 Matching invoices with bank transactions…"}
+                  {reconcileStep === 2 &&
+                    "📑 Matching invoices with bank transactions…"}
                 </Typography>
                 <LinearProgress sx={{ width: "100%", marginTop: 2 }} />
               </>
             ) : (
               <>
                 <Typography variant="h6" sx={{ marginBottom: 2 }}>
-                  ✅ Reconciliation complete! Please check the required tabs for records.
+                  ✅ Reconciliation complete! Please check the required tabs for
+                  records.
                 </Typography>
                 <Button
                   variant="contained"
                   color="primary"
                   onClick={() => {
-                    setReconciling(false);   // hide overlay
-                    setReconcileStep(0);     // reset steps
+                    setReconciling(false); // hide overlay
+                    setReconcileStep(0); // reset steps
                   }}
                 >
                   OK
@@ -1128,15 +1462,15 @@ const MarkdownRenderer = ({ text }) => (
 
       {/* financial model */}
       {tabIndex === 6 && (
-        <Box 
-        // sx={{ p: 2 }}
+        <Box
+          // sx={{ p: 2 }}
           sx={{
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              width: "100%",
-              mt: 3,
-            }}
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            width: "100%",
+            mt: 3,
+          }}
         >
           <Box
             sx={{
@@ -1150,17 +1484,24 @@ const MarkdownRenderer = ({ text }) => (
               boxShadow: 3,
             }}
           >
-          {isLoading ? (
-            // 2. Loading state
-            <Fade in={isLoading} timeout={800}>
-              <Box sx={{ mt: 5, display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <CircularProgress color="info" size={60} />
-                <Typography variant="body1" sx={{ color: "#fff", mt: 2 }}>
-                  The Financial Modeling Agent is working on your request...
-                </Typography>
-            </Box>
-            </Fade>
-          ) : modelOutput ? (
+            {isLoading ? (
+              // 2. Loading state
+              <Fade in={isLoading} timeout={800}>
+                <Box
+                  sx={{
+                    mt: 5,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                  }}
+                >
+                  <CircularProgress color="info" size={60} />
+                  <Typography variant="body1" sx={{ color: "#fff", mt: 2 }}>
+                    The Financial Modeling Agent is working on your request...
+                  </Typography>
+                </Box>
+              </Fade>
+            ) : modelOutput ? (
               // 3. Model output (your existing block)
               <Box sx={{ mt: 3, width: "100%" }}>
                 {/* Title */}
@@ -1172,7 +1513,10 @@ const MarkdownRenderer = ({ text }) => (
                 <Typography variant="h6" sx={{ color: "#fff", mb: 2 }}>
                   Executive Summary
                 </Typography>
-                <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mb: 2 }}>
+                <Typography
+                  variant="body2"
+                  sx={{ whiteSpace: "pre-wrap", mb: 2 }}
+                >
                   {modelOutput.executive_summary}
                 </Typography>
 
@@ -1204,48 +1548,58 @@ const MarkdownRenderer = ({ text }) => (
                 <Typography variant="h6" sx={{ color: "#fff", mb: 2 }}>
                   Strategic Observations
                 </Typography>
-                <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mb: 2 }}>
+                <Typography
+                  variant="body2"
+                  sx={{ whiteSpace: "pre-wrap", mb: 2 }}
+                >
                   {modelOutput.strategic_observations}
                 </Typography>
 
                 {/* Monthly Projections */}
                 <Typography variant="h6" sx={{ color: "#fff", mb: 2 }}>
-                        Monthly Projections
-                      </Typography>
-                      <Table sx={{ backgroundColor: "rgba(255,255,255,0.05)" }}>
-                        <TableHead>
-                          <TableRow>
-                            {Object.keys(modelOutput.projections.monthly[0]).map((col) => (
-                              <TableCell key={col} sx={{ color: "#fff" }}>
-                                {col.replace("_", " ")}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {modelOutput.projections.monthly.map((row, idx) => (
-                            <TableRow key={idx}>
-                              {Object.keys(row).map((col) => (
-                                <TableCell key={col} sx={{ color: "#fff" }}>
-                                  {row[col]}
-                                </TableCell>
-                              ))}
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                  Monthly Projections
+                </Typography>
+                <Table sx={{ backgroundColor: "rgba(255,255,255,0.05)" }}>
+                  <TableHead>
+                    <TableRow>
+                      {Object.keys(modelOutput.projections.monthly[0]).map(
+                        (col) => (
+                          <TableCell key={col} sx={{ color: "#fff" }}>
+                            {col.replace("_", " ")}
+                          </TableCell>
+                        ),
+                      )}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {modelOutput.projections.monthly.map((row, idx) => (
+                      <TableRow key={idx}>
+                        {Object.keys(row).map((col) => (
+                          <TableCell key={col} sx={{ color: "#fff" }}>
+                            {row[col]}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
 
                 {/* Yearly Projections */}
                 {modelOutput.projections?.yearly && (
                   <>
-                    <Typography variant="h6" sx={{ color: "#fff", mb: 2, mt: 4 }}>
+                    <Typography
+                      variant="h6"
+                      sx={{ color: "#fff", mb: 2, mt: 4 }}
+                    >
                       Yearly Projections
                     </Typography>
                     <Typography variant="body2" sx={{ color: "#fff" }}>
-                      Total Revenue: {modelOutput.projections.yearly.total_revenue}
+                      Total Revenue:{" "}
+                      {modelOutput.projections.yearly.total_revenue}
                     </Typography>
                     <Typography variant="body2" sx={{ color: "#fff" }}>
-                      Total Net Profit: {modelOutput.projections.yearly.total_net_profit}
+                      Total Net Profit:{" "}
+                      {modelOutput.projections.yearly.total_net_profit}
                     </Typography>
                   </>
                 )}
@@ -1264,61 +1618,60 @@ const MarkdownRenderer = ({ text }) => (
 
                 {/* buttons for interactions */}
                 <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}>
-                    <Button
-                      variant="outlined"
-                      sx={{ mr: 2 }}
-                      onClick={() => {
-                        setModelOutput(null);
-                        // setModelGoal("");
-                        // setModelReqs("");
-                        // setUsePL(false);
-                        // setUseBS(false);
-                        // setUseLedger(false);
-                        // setIsLoading(false);
+                  <Button
+                    variant="outlined"
+                    sx={{ mr: 2 }}
+                    onClick={() => {
+                      setModelOutput(null);
+                      // setModelGoal("");
+                      // setModelReqs("");
+                      // setUsePL(false);
+                      // setUseBS(false);
+                      // setUseLedger(false);
+                      // setIsLoading(false);
 
-                        //setThreadId(uuidv4());  // new session ID
-                        }
-                      }
-                    >
-                      Run New Model
-                    </Button>
-                    {/* <Button
+                      //setThreadId(uuidv4());  // new session ID
+                    }}
+                  >
+                    Run New Model
+                  </Button>
+                  {/* <Button
                       variant="outlined"
                       sx={{ mr: 2 }}
                       onClick={() => window.print()}
                     >
                       Print Report
                     </Button> */}
-                    <Button
-                      variant="contained"
-                      color="info"
-                      sx={{ mr: 2 }}
-                      onClick={() => {
-                        //alert("Email functionality coming soon!");
-                        setOpenEmailModal(true)
-                      }}
-                    >
-                      Send via Email
-                    </Button>
+                  <Button
+                    variant="contained"
+                    color="info"
+                    sx={{ mr: 2 }}
+                    onClick={() => {
+                      //alert("Email functionality coming soon!");
+                      setOpenEmailModal(true);
+                    }}
+                  >
+                    Send via Email
+                  </Button>
                 </Box>
-
-              </Box>      
-              
-          ) : (
+              </Box>
+            ) : (
               // 1. Input form (your fields + Run Model button)
-            <Box
-              sx={{
-                width: "100%",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                backgroundColor: "rgba(255,255,255,0.05)",
-                borderRadius: "12px",
-                p: 4,
-                boxShadow: 3,
-              }}
-            >
-              <Typography variant="h6" sx={{ color: "#fff", mb: 2 }}>Financial Modeling Agent</Typography>
+              <Box
+                sx={{
+                  width: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  backgroundColor: "rgba(255,255,255,0.05)",
+                  borderRadius: "12px",
+                  p: 4,
+                  boxShadow: 3,
+                }}
+              >
+                <Typography variant="h6" sx={{ color: "#fff", mb: 2 }}>
+                  Financial Modeling Agent
+                </Typography>
                 <TextField
                   fullWidth
                   label="Goal"
@@ -1337,45 +1690,59 @@ const MarkdownRenderer = ({ text }) => (
                 />
                 <FormGroup sx={{ mt: 2, alignSelf: "flex-start" }}>
                   <FormControlLabel
-                    control={<Checkbox checked={usePL} onChange={(e) => setUsePL(e.target.checked)} />}
+                    control={
+                      <Checkbox
+                        checked={usePL}
+                        onChange={(e) => setUsePL(e.target.checked)}
+                      />
+                    }
                     label="Use Profit & Loss"
                   />
                   <FormControlLabel
-                    control={<Checkbox checked={useBS} onChange={(e) => setUseBS(e.target.checked)} />}
+                    control={
+                      <Checkbox
+                        checked={useBS}
+                        onChange={(e) => setUseBS(e.target.checked)}
+                      />
+                    }
                     label="Use Balance Sheet"
                   />
                   <FormControlLabel
-                    control={<Checkbox checked={useLedger} onChange={(e) => setUseLedger(e.target.checked)} />}
+                    control={
+                      <Checkbox
+                        checked={useLedger}
+                        onChange={(e) => setUseLedger(e.target.checked)}
+                      />
+                    }
                     label="Use Ledger"
                   />
                 </FormGroup>
-              <TextField
-                fullWidth
-                label="Specific Requirements"
-                placeholder="e.g. Include seasonal adjustments"
-                value={modelReqs}
-                onChange={(e) => setModelReqs(e.target.value)}
-                // sx={{ mt: 2 }}
-                sx={{
-                  mt: 2,
-                  backgroundColor: "#fff",
-                  borderRadius: "6px",
-                  "& .MuiInputBase-input": {
-                    color: "#000", // black text inside
-                  },
-                }}
-              />
-              <Button
-                variant="contained"
-                // sx={{ mt: 2 }}
-                sx={{ mt: 3, width: "200px" }}
-                onClick={async () => {
-                  setIsLoading(true);
-                  setModelOutput(null); // clear previous result
+                <TextField
+                  fullWidth
+                  label="Specific Requirements"
+                  placeholder="e.g. Include seasonal adjustments"
+                  value={modelReqs}
+                  onChange={(e) => setModelReqs(e.target.value)}
+                  // sx={{ mt: 2 }}
+                  sx={{
+                    mt: 2,
+                    backgroundColor: "#fff",
+                    borderRadius: "6px",
+                    "& .MuiInputBase-input": {
+                      color: "#000", // black text inside
+                    },
+                  }}
+                />
+                <Button
+                  variant="contained"
+                  // sx={{ mt: 2 }}
+                  sx={{ mt: 3, width: "200px" }}
+                  onClick={async () => {
+                    setIsLoading(true);
+                    setModelOutput(null); // clear previous result
 
-                  try {
-
-                          const res = await fetch(
+                    try {
+                      const res = await fetch(
                         `http://127.0.0.1:8002/agent/session/${threadId}/model`,
                         {
                           method: "POST",
@@ -1389,31 +1756,29 @@ const MarkdownRenderer = ({ text }) => (
                             ],
                             specific_requirements: modelReqs,
                           }),
-                        }
+                        },
                       );
                       const data = await res.json();
                       console.log("Modeling response:", data);
-                      setModelOutput(data.state.financial_model)
-
-                    }catch (error) {
+                      setModelOutput(data.state.financial_model);
+                    } catch (error) {
                       console.error("Modeling error:", error);
                     } finally {
                       setIsLoading(false);
                     }
-                  }
-                }
-              >
-                Run Model
-              </Button>
-              {/* // input ends here */}
-              <Typography variant="body2" sx={{ color: "#aaa", mt: 3 }}>
-                    Please run the model to see the output here.
-              </Typography>
-            </Box>
+                  }}
+                >
+                  Run Model
+                </Button>
+                {/* // input ends here */}
+                <Typography variant="body2" sx={{ color: "#aaa", mt: 3 }}>
+                  Please run the model to see the output here.
+                </Typography>
+              </Box>
             )}
           </Box>
         </Box>
-      )}  
+      )}
 
       {/* chat panel */}
       {tabIndex === 7 && (
@@ -1425,7 +1790,7 @@ const MarkdownRenderer = ({ text }) => (
             width: "100%",
             height: "80vh",
             // backgroundColor: "#ece5dd"
-            background: "linear-gradient(180deg, #0b1a33 0%, #091a2f 100%)", 
+            background: "linear-gradient(180deg, #0b1a33 0%, #091a2f 100%)",
             borderRadius: "12px",
             overflow: "hidden",
           }}
@@ -1469,7 +1834,10 @@ const MarkdownRenderer = ({ text }) => (
                     fontSize: "0.75rem",
                   }}
                 >
-                  {new Date(entry.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {new Date(entry.timestamp).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </Typography>
               </Box>
             ))}
@@ -1500,85 +1868,91 @@ const MarkdownRenderer = ({ text }) => (
               sx={{ ml: 2, borderRadius: "50%", minWidth: "50px" }}
               onClick={async () => {
                 try {
-                const res = await fetch(
-                  `http://127.0.0.1:8002/agent/session/${threadId}/chat`,
-                  {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      thread_id: threadId,
-                      message: chatInput,
-                      chat_history: chatHistory.map((entry) => ({
-                        role: entry.q ? "user" : "assistant",
-                        content: entry.q || entry.a,
-                      })),
-                    }),
-                  }
-                );
-                const data = await res.json();
-                const refinedReply = data.reply
-                  .replace(/###/g, "")       // remove headers
-                  .replace(/\*\*/g, "")      // remove bold markers
-                  .replace(/\n{2,}/g, "\n")  // collapse extra line breaks
-                  .trim();
+                  const res = await fetch(
+                    `http://127.0.0.1:8002/agent/session/${threadId}/chat`,
+                    {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        thread_id: threadId,
+                        message: chatInput,
+                        chat_history: chatHistory.map((entry) => ({
+                          role: entry.q ? "user" : "assistant",
+                          content: entry.q || entry.a,
+                        })),
+                      }),
+                    },
+                  );
+                  const data = await res.json();
+                  const refinedReply = data.reply
+                    .replace(/###/g, "") // remove headers
+                    .replace(/\*\*/g, "") // remove bold markers
+                    .replace(/\n{2,}/g, "\n") // collapse extra line breaks
+                    .trim();
 
-                console.log("This is the data from the chat response:", data);
-                setChatHistory((prev) => [
-                  ...prev,
-                  {
-                    q: chatInput, timestamp: new Date().toISOString() },   // user bubble
-                  //{ a: data.reply, timestamp: new Date().toISOString() }, // CFO bubble
-                  { a: refinedReply, timestamp: new Date().toISOString() }, // CFO bubble
+                  console.log("This is the data from the chat response:", data);
+                  setChatHistory((prev) => [
+                    ...prev,
+                    {
+                      q: chatInput,
+                      timestamp: new Date().toISOString(),
+                    }, // user bubble
+                    //{ a: data.reply, timestamp: new Date().toISOString() }, // CFO bubble
+                    { a: refinedReply, timestamp: new Date().toISOString() }, // CFO bubble
                     // timestamp: new Date().toISOString(), // ✅ store timestamp
-                  // </Box></Box>},
-                ]);
-                setChatInput("");
-                console.log("Updated chat history:", chatHistory);
-
-              } catch (error) {
-                console.error("Error occurred while fetching chat response:", error);
-              }
-            }
-          }
+                    // </Box></Box>},
+                  ]);
+                  setChatInput("");
+                  console.log("Updated chat history:", chatHistory);
+                } catch (error) {
+                  console.error(
+                    "Error occurred while fetching chat response:",
+                    error,
+                  );
+                }
+              }}
             >
               ➤
             </Button>
           </Box>
         </Box>
       )}
-            
+
       {/* email pop up */}
       <Dialog open={openEmailModal} onClose={() => setOpenEmailModal(false)}>
         <DialogTitle>Send Report via Email</DialogTitle>
         <DialogContent>
-            <TextField
-              autoFocus
-              margin="dense"
-              label="Recipient Email"
-              type="email"
-              fullWidth
-              value={recipientEmail}
-              onChange={(e) => setRecipientEmail(e.target.value)}
-            />
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Recipient Email"
+            type="email"
+            fullWidth
+            value={recipientEmail}
+            onChange={(e) => setRecipientEmail(e.target.value)}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenEmailModal(false)}>Cancel</Button>
           <Button
             onClick={async () => {
               try {
-                const res = await fetch("http://127.0.0.1:8002/agent/send-email", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    to: recipientEmail,
-                    subject: "Financial Forecast Report",
-                    // body: JSON.stringify(modelOutput, null, 2), // or format nicely
-                    body: "Hello,\n\nPlease find attached the latest financial forecast generated by our modeling agent...",
-                    forecast: modelOutput
-                  }),
-                });
+                const res = await fetch(
+                  "http://127.0.0.1:8002/agent/send-email",
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      to: recipientEmail,
+                      subject: "Financial Forecast Report",
+                      // body: JSON.stringify(modelOutput, null, 2), // or format nicely
+                      body: "Hello,\n\nPlease find attached the latest financial forecast generated by our modeling agent...",
+                      forecast: modelOutput,
+                    }),
+                  },
+                );
                 if (res.ok) {
-                  console.log("Value of res",res)
+                  console.log("Value of res", res);
                   alert("Email sent successfully!");
                 } else {
                   alert("Failed to send email.");
@@ -1606,9 +1980,5 @@ const MarkdownRenderer = ({ text }) => (
         </div>
       </footer>
     </Box>
-
-  )
+  );
 }
-
-
-
